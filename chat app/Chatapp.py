@@ -7,14 +7,14 @@ from tkinter import filedialog
 import os
 import sys
 
-# Get the current script path
-current_path = os.getcwd()
-
 # Create a new ConfigParser object
 config = configparser.ConfigParser()
 
+# Get the path of the .exe file
+exe_path = os.path.dirname(sys.executable)
+
 # Read the config file
-config_file_path = os.path.join(current_path, 'chatapp.conf')
+config_file_path = os.path.join(exe_path, 'chatapp.conf')
 if os.path.exists(config_file_path):
     config.read(config_file_path)
 else:
