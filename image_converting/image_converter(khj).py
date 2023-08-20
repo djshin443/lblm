@@ -20,22 +20,15 @@ home_path = os.path.expanduser("~")
 source_folder = os.path.join(home_path, 'Desktop', 'image')
 export_folder = os.path.join(home_path, 'Desktop', 'image_export')  # Main export folder
 
-created_folders = []
-
-# image 폴더 존재 확인 및 생성
-if not os.path.exists(source_folder):
-    os.makedirs(source_folder)
-    created_folders.append(source_folder)
-
 # image_export 폴더 존재 확인 및 생성
 if not os.path.exists(export_folder):
     os.makedirs(export_folder)
-    created_folders.append(export_folder)
+    print(f"'image_export' 폴더가 생성되었습니다. 경로: {export_folder}")
 
-# 폴더 생성 여부에 따른 메시지 출력
-if created_folders:
-    for folder in created_folders:
-        print(f"'{os.path.basename(folder)}' 폴더가 생성되었습니다. 경로: {folder}")
+# image 폴더 존재 확인
+if not os.path.exists(source_folder):
+    os.makedirs(source_folder)
+    print(f"'image' 폴더가 생성되었습니다. 경로: {source_folder}")
     input("종료하려면 Enter 키를 눌러주세요...")
     sys.exit()
 
