@@ -49,11 +49,13 @@ def get_product_price(product_code):
     # 응답 데이터 파싱
     if response.status_code == 200:
         data = response.json()
+        # 여기서 skuListSize 값이 0인 경우 처리
+        if data.get('skuListSize', 1) == 0:
+            return 'N/A'  # 'skuListSize'가 0이면 'N/A' 반환
         # 'skuList' 내부를 순회하여 가격 정보 찾기
         for sku in data.get('skuList', []):
             offers = sku.get('offers', {})
             price = offers.get('price', '가격 정보 없음')
-            print(f"제품 코드 {product_code}의 가격: {price}")  # 여기에 print 문을 추가
             return price  # 첫 번째 제품의 가격을 반환
     else:
         print('응답 상태 코드:', response.status_code)
@@ -133,7 +135,7 @@ for sheet_name in workbook.sheetnames:
 
                     # 상위 5개 매장 정보 출력
                     stock_info = [store.get('name') for store in stores_with_stock[:5]]
-                    print("조회된 재고 있는 매장 목록:")
+                    #print("조회된 재고 있는 매장 목록:")
                     print(f"제품 코드 {product_code}에 대한 재고 조회 결과:")
                     if total_stores_count > 0:
                         print(f"총 {total_stores_count}개 매장에서 재고가 있습니다. 서울/도산 매장 수: {seoul_dosan_count}")
@@ -160,5 +162,8 @@ for sheet_name in workbook.sheetnames:
         # 변경사항을 파일에 즉시 저장
         workbook.save(filename=target_path)
         print(f"Row {row}: Successfully updated with product code {product_code}.")
+        
+        # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
+        print()
 
 print("Process completed. File saved successfully.")
