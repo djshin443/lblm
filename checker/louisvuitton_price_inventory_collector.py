@@ -9,6 +9,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import load_workbook
 import os
+import time  # time 모듈을 추가합니다.
 
 # 파일 설정 및 원본 파일 복사
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -165,5 +166,8 @@ for sheet_name in workbook.sheetnames:
         
         # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
         print()
+        
+        # 다음 제품 코드 검색 전에 10초간 대기
+        time.sleep(10)
 
 print("Process completed. File saved successfully.")
