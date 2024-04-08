@@ -1,21 +1,31 @@
 import requests
 import json
 from datetime import datetime
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import load_workbook
 import os
-import time  # time 모듈을 추가합니다.
+import time
 
-# 파일 설정 및 원본 파일 복사
+def save_progress(progress_file, sheet_name, row):
+    """처리 진행 상태를 파일에 저장합니다."""
+    with open(progress_file, 'w') as file:
+        file.write(f"{sheet_name},{row}")
+
+def load_progress(progress_file):
+    """처리 진행 상태를 파일에서 로드합니다."""
+    if os.path.exists(progress_file):
+        with open(progress_file, 'r') as file:
+            content = file.read()
+            if content:
+                sheet_name, row = content.split(',')
+                return sheet_name, int(row)
+    return None, 0
+
+max_stores_to_save = 5  # 저장하고자 하는 최대 매장 수를 정의 (0일 경우 전체 매장 저장)
 current_dir = os.path.dirname(os.path.abspath(__file__))
 source_filename = '루이비통.xlsx'
-datetime_now = datetime.now().strftime('%Y%m%d%H%M%S')
+datetime_now = datetime.now().strftime('%Y%m%d')
 target_filename = f'루이비통_{datetime_now}.xlsx'
+progress_file = os.path.join(current_dir, "progress.txt")
 source_path = os.path.join(current_dir, source_filename)
 target_path = os.path.join(current_dir, target_filename)
 
@@ -25,6 +35,7 @@ try:
     print(f"원본 파일을 '{target_filename}'으로 복사했습니다.")
 except Exception as e:
     print(f"파일 복사 중 오류: {e}")
+    exit()
 
 try:
     workbook = load_workbook(filename=target_path)
@@ -32,6 +43,8 @@ try:
 except Exception as e:
     print(f"엑셀 파일 로드 중 오류: {e}")
     exit()
+
+last_processed_sheet, last_processed_row = load_progress(progress_file)
 
 def get_product_price(product_code):
     # API 요청을 위한 URL 및 헤더 설정
@@ -65,14 +78,14 @@ def get_product_price(product_code):
 
 for sheet_name in workbook.sheetnames:
     sheet = workbook[sheet_name]
-    
-    for row in range(2, sheet.max_row + 1):
+    if last_processed_sheet and sheet_name < last_processed_sheet:
+        continue
+    start_row = last_processed_row + 1 if sheet_name == last_processed_sheet else 2
+
+    for row in range(start_row, sheet.max_row + 1):  # 여기에 콜론이 필요합니다.
         product_code = sheet.cell(row=row, column=1).value
         if not product_code:
-            sheet.cell(row=row, column=2).value = 'N/A'
-            sheet.cell(row=row, column=3).value = 'N/A'
-            sheet.cell(row=row, column=4).value = 'N/A'
-            continue
+            continue  # 제품 코드가 없으면 다음 행으로 넘어갑니다.
 
         # 초기값 설정
         price = 'N/A'
@@ -87,7 +100,10 @@ for sheet_name in workbook.sheetnames:
 
         # 매장 재고 조회
         total_stores_count = 0
-        if price != '품번 없음':  # 품번이 유효한 경우에만 재고 조회를 실행
+        seoul_dosan_count = 0  # 서울/도산 매장 수 초기화
+        stock_info = []  # 재고가 있는 매장 이름을 저장할 리스트
+
+        if price != 'N/A':  # 가격 정보가 'N/A'가 아닌 경우에만 재고 조회를 실행
             try:
                 url = 'https://api.louisvuitton.com/eco-eu/search-merch-eapi/v1/kor-kr/stores/query'
                 headers = {
@@ -119,7 +135,6 @@ for sheet_name in workbook.sheetnames:
                 
                 if response.status_code == 200:
                     response_data = response.json()
-                    # stockAvailability가 'true'인 매장만 필터링
                     stores_with_stock = [
                         store for store in response_data.get('hits', [])
                         if any(
@@ -128,46 +143,53 @@ for sheet_name in workbook.sheetnames:
                         )
                     ]
                     total_stores_count = len(stores_with_stock)
-                    seoul_dosan_stores = [
-                        store for store in stores_with_stock
-                        if '도산' in store.get('name') or '서울' in store.get('name')
-                    ]
-                    seoul_dosan_count = len(seoul_dosan_stores)
 
-                    # 상위 5개 매장 정보 출력
-                    stock_info = [store.get('name') for store in stores_with_stock[:5]]
-                    #print("조회된 재고 있는 매장 목록:")
-                    print(f"제품 코드 {product_code}에 대한 재고 조회 결과:")
-                    if total_stores_count > 0:
-                        print(f"총 {total_stores_count}개 매장에서 재고가 있습니다. 서울/도산 매장 수: {seoul_dosan_count}")
-                        print("상위 5개 매장 목록:")
-                        for name in stock_info:
-                            print(name)
-                    else:
-                        print("재고가 없습니다.")
+                    for store in stores_with_stock:
+                        if '루이 비통 서울 도산' in store.get('name') or '루이 비통 메종 서울' in store.get('name'):
+                            seoul_dosan_count += 1
+                        stock_info.append(store.get('name'))  # 모든 매장 이름 추가
+
             except Exception as e:
                 print(f"재고 조회 중 예외 발생: {e}")
 
         # 매장 재고 조회 성공 후 처리
         if total_stores_count > 0:
-            # 여기서 stock_info 리스트에 매장 이름을 추가할 때 '\n' 사용
-            stock_info_str = '\n'.join(stock_info)  # 리스트를 문자열로 변환하며 줄바꿈 문자 추가
+            if max_stores_to_save > 0 and len(stock_info) > max_stores_to_save:
+                stock_info_to_save = stock_info[:max_stores_to_save]
+            else:
+                stock_info_to_save = stock_info
+            stock_info_str = '\n'.join(stock_info_to_save)
         else:
             stock_info_str = 'N/A'
+
+        # 재고 현황 문자열 설정
+        if total_stores_count == 0 and seoul_dosan_count == 0:
+            stock_status = 'N/A'
+        else:
+            stock_status = f"{total_stores_count}({seoul_dosan_count})"
 
         # 엑셀 파일에 결과 저장
         sheet.cell(row=row, column=2).value = price
         sheet.cell(row=row, column=3).value = stock_status
-        sheet.cell(row=row, column=4).value = stock_info_str.replace(', ', '\n')
+        sheet.cell(row=row, column=4).value = stock_info_str
 
-        # 변경사항을 파일에 즉시 저장
+        # 변경사항을 파일에 저장
         workbook.save(filename=target_path)
-        print(f"Row {row}: Successfully updated with product code {product_code}.")
         
+        # 진행 상태 저장
+        save_progress(progress_file, sheet_name, row)
+        
+        # 콘솔에 결과 출력
+        print(f"제품 코드: {product_code}")
+        print(f"가격: {price}")
+        print(f"전체 매장 수: {total_stores_count}, 서울/도산 매장 수: {seoul_dosan_count}")
+        print(f"재고 있는 매장 목록:\n{stock_info_str}")
+        
+        
+
+        # 다음 제품 코드 검색 전에 대기
+        time.sleep(1)
+
+        print("Process completed. File saved successfully.")
         # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
         print()
-        
-        # 다음 제품 코드 검색 전에 10초간 대기
-        time.sleep(10)
-
-print("Process completed. File saved successfully.")
