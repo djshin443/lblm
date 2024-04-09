@@ -4,21 +4,21 @@ from datetime import datetime
 from openpyxl import load_workbook
 import os
 import time
-import sys  # sys 모듈 추가
+import sys
 
-# 실행 파일의 경로를 얻기 위한 함수
+# 사용자 정의 상태 변수
+ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
+NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
+NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품 또는 공홈에는 있지만 판매하지 않는 제품
+
 def get_base_dir():
-    # PyInstaller의 임시 폴더에 있을 때 (즉, .exe로 실행될 때)
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
-    # .py 스크립트로 실행될 때
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
-max_stores_to_save = 5  # 저장하고자 하는 최대 매장 수를 정의 (0일 경우 전체 매장 저장)
-
-# 현재 작업 디렉토리를 기준으로 경로 설정
-current_dir = os.getcwd()  # 변경됨: os.path.dirname(os.path.abspath(__file__)) 대신 os.getcwd() 사용
+max_stores_to_save = 5
+current_dir = os.getcwd()
 source_filename = '루이비통.xlsx'
 datetime_now = datetime.now().strftime('%Y%m%d')
 target_filename = f'루이비통_{datetime_now}.xlsx'
@@ -27,12 +27,10 @@ source_path = os.path.join(current_dir, source_filename)
 target_path = os.path.join(current_dir, target_filename)
 
 def save_progress(progress_file, sheet_name, row):
-    """처리 진행 상태를 파일에 저장합니다."""
     with open(progress_file, 'w') as file:
         file.write(f"{sheet_name},{row}")
 
 def load_progress(progress_file):
-    """처리 진행 상태를 파일에서 로드합니다."""
     if os.path.exists(progress_file):
         with open(progress_file, 'r') as file:
             content = file.read()
@@ -41,14 +39,13 @@ def load_progress(progress_file):
                 return sheet_name, int(row)
     return None, 0
 
-
 try:
     workbook = load_workbook(filename=source_path)
     workbook.save(filename=target_path)
     print(f"원본 파일을 '{target_filename}'으로 복사했습니다.")
 except Exception as e:
     print(f"파일 복사 중 오류: {e}")
-    sys.exit()  # sys.exit()를 호출하여 스크립트 실행을 종료합니다
+    sys.exit()
 
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
@@ -88,14 +85,15 @@ for sheet_name in workbook.sheetnames:
         continue
     start_row = last_processed_row + 1 if sheet_name == last_processed_sheet else 2
 
-    for row in range(start_row, sheet.max_row + 1):  # 여기에 콜론이 필요합니다.
+    for row in range(start_row, sheet.max_row + 1):
         product_code = sheet.cell(row=row, column=1).value
         if not product_code:
-            continue  # 제품 코드가 없으면 다음 행으로 넘어갑니다.
+            continue
 
         # 초기값 설정
         price = 'N/A'
         stock_status = 'N/A'
+        website_status = NOT_AVAILABLE  # 초기 상태를 'N/A'로 설정
         stock_info_str = 'N/A'
 
         # 가격 정보 조회
@@ -173,11 +171,22 @@ for sheet_name in workbook.sheetnames:
             stock_status = 'N/A'
         else:
             stock_status = f"{total_stores_count}({seoul_dosan_count})"
-
+        
+        # 여기에 공홈 등록 상태 업데이트 로직을 추가합니다.
+        if price == 'N/A' and stock_info_str == 'N/A':
+            website_status = NOT_AVAILABLE
+        elif price != 'N/A' and stock_info_str == 'N/A':
+            website_status = NOT_AVAILABLE
+        elif price == 'N/A' and stock_info_str != 'N/A':
+            website_status = NOT_ON_WEBSITE_SOLD
+        else:
+            website_status = ON_WEBSITE_SOLD
+            
         # 엑셀 파일에 결과 저장
         sheet.cell(row=row, column=2).value = price
         sheet.cell(row=row, column=3).value = stock_status
-        sheet.cell(row=row, column=4).value = stock_info_str
+        sheet.cell(row=row, column=4).value = website_status  # 수정된 부분
+        sheet.cell(row=row, column=5).value = stock_info_str
 
         # 변경사항을 파일에 저장
         workbook.save(filename=target_path)
@@ -194,7 +203,7 @@ for sheet_name in workbook.sheetnames:
         
 
         # 다음 제품 코드 검색 전에 대기
-        time.sleep(10)
+        time.sleep(1)
 
         print("Process completed. File saved successfully.")
         # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
