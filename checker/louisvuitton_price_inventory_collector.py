@@ -6,25 +6,29 @@ import os
 import time
 import sys
 
-# 사용자 정의 상태 변수
+# 사용자 정의 상태 변수 확장
 ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
 NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
-NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품 또는 공홈에는 있지만 판매하지 않는 제품
-max_stores_to_save = 5 #0이면 전체 출력
+NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품
+ON_WEBSITE_NOT_SOLD = "N/A"  # 공홈에는 있지만 판매하지 않는 제품
+max_stores_to_save = 5  # 0이면 매장 전체 출력
+
+current_dir = os.getcwd()
+datetime_now = datetime.now().strftime('%Y%m%d')
+
+source_filename = '루이비통.xlsx'
+target_filename = f'루이비통_{datetime_now}.xlsx'
+progress_file_name = f'progress_{datetime_now}.txt'  # 현재 날짜를 포함한 파일 이름
+
+source_path = os.path.join(current_dir, source_filename)
+target_path = os.path.join(current_dir, target_filename)
+progress_file = os.path.join(current_dir, progress_file_name)
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
     else:
         return os.path.dirname(os.path.abspath(__file__))
-
-current_dir = os.getcwd()
-source_filename = '루이비통.xlsx'
-datetime_now = datetime.now().strftime('%Y%m%d')
-target_filename = f'루이비통_{datetime_now}.xlsx'
-progress_file = os.path.join(current_dir, "progress.txt")
-source_path = os.path.join(current_dir, source_filename)
-target_path = os.path.join(current_dir, target_filename)
 
 def save_progress(progress_file, sheet_name, row):
     with open(progress_file, 'w') as file:
@@ -66,10 +70,8 @@ def get_product_price(product_code):
     # 응답 데이터 파싱
     if response.status_code == 200:
         data = response.json()
-        # 여기서 skuListSize 값이 0인 경우 처리
         if data.get('skuListSize', 1) == 0:
             return 'N/A'  # 'skuListSize'가 0이면 'N/A' 반환
-        # 'skuList' 내부를 순회하여 가격 정보 찾기
         for sku in data.get('skuList', []):
             offers = sku.get('offers', {})
             price = offers.get('price', '가격 정보 없음')
@@ -177,7 +179,7 @@ for sheet_name in workbook.sheetnames:
         if price == 'N/A' and stock_info_str == 'N/A':
             website_status = NOT_AVAILABLE
         elif price != 'N/A' and stock_info_str == 'N/A':
-            website_status = NOT_AVAILABLE
+            website_status = ON_WEBSITE_NOT_SOLD  
         elif price == 'N/A' and stock_info_str != 'N/A':
             website_status = NOT_ON_WEBSITE_SOLD
         else:
@@ -203,7 +205,6 @@ for sheet_name in workbook.sheetnames:
   
         # 다음 제품 코드 검색 전에 대기
         time.sleep(1)
-
         print("Process completed. File saved successfully.")
         # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
-        print()  
+        print()
