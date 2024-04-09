@@ -10,6 +10,7 @@ import sys
 ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
 NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
 NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품 또는 공홈에는 있지만 판매하지 않는 제품
+max_stores_to_save = 5 #0이면 전체 출력
 
 def get_base_dir():
     if getattr(sys, 'frozen', False):
@@ -17,7 +18,6 @@ def get_base_dir():
     else:
         return os.path.dirname(os.path.abspath(__file__))
 
-max_stores_to_save = 5
 current_dir = os.getcwd()
 source_filename = '루이비통.xlsx'
 datetime_now = datetime.now().strftime('%Y%m%d')
@@ -123,12 +123,13 @@ for sheet_name in workbook.sheetnames:
                 data = {
                         "flagShip": False,
                         "country": "KR",
-                        "latitudeCenter": "37.48654195241737",
-                        "longitudeCenter": "127.0971466",
-                        "latitudeA": "37.48953011783969",
-                        "longitudeA": "127.09046253513489",
-                        "latitudeB": "37.48355378699504",
-                        "longitudeB": "127.10383066486511",
+                        "query": "서울",
+                        "latitudeA": "37.768825744921735",
+                        "latitudeB": "37.36061764438869",
+                        "latitudeCenter": "37.56472169465521",
+                        "longitudeA": "126.51683339179687",
+                        "longitudeB": "127.43144520820312",
+                        "longitudeCenter": "126.97413929999999",
                         "query": "",
                         "clickAndCollect": False,
                         "skuId": product_code,  
@@ -199,9 +200,7 @@ for sheet_name in workbook.sheetnames:
         print(f"가격: {price}")
         print(f"전체 매장 수: {total_stores_count}, 서울/도산 매장 수: {seoul_dosan_count}")
         print(f"재고 있는 매장 목록:\n{stock_info_str}")
-        
-        
-
+  
         # 다음 제품 코드 검색 전에 대기
         time.sleep(1)
 
