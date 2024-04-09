@@ -4,6 +4,27 @@ from datetime import datetime
 from openpyxl import load_workbook
 import os
 import time
+import sys  # sys 모듈 추가
+
+# 실행 파일의 경로를 얻기 위한 함수
+def get_base_dir():
+    # PyInstaller의 임시 폴더에 있을 때 (즉, .exe로 실행될 때)
+    if getattr(sys, 'frozen', False):
+        return sys._MEIPASS
+    # .py 스크립트로 실행될 때
+    else:
+        return os.path.dirname(os.path.abspath(__file__))
+
+max_stores_to_save = 5  # 저장하고자 하는 최대 매장 수를 정의 (0일 경우 전체 매장 저장)
+
+# 현재 작업 디렉토리를 기준으로 경로 설정
+current_dir = os.getcwd()  # 변경됨: os.path.dirname(os.path.abspath(__file__)) 대신 os.getcwd() 사용
+source_filename = '루이비통.xlsx'
+datetime_now = datetime.now().strftime('%Y%m%d')
+target_filename = f'루이비통_{datetime_now}.xlsx'
+progress_file = os.path.join(current_dir, "progress.txt")
+source_path = os.path.join(current_dir, source_filename)
+target_path = os.path.join(current_dir, target_filename)
 
 def save_progress(progress_file, sheet_name, row):
     """처리 진행 상태를 파일에 저장합니다."""
@@ -20,14 +41,6 @@ def load_progress(progress_file):
                 return sheet_name, int(row)
     return None, 0
 
-max_stores_to_save = 5  # 저장하고자 하는 최대 매장 수를 정의 (0일 경우 전체 매장 저장)
-current_dir = os.path.dirname(os.path.abspath(__file__))
-source_filename = '루이비통.xlsx'
-datetime_now = datetime.now().strftime('%Y%m%d')
-target_filename = f'루이비통_{datetime_now}.xlsx'
-progress_file = os.path.join(current_dir, "progress.txt")
-source_path = os.path.join(current_dir, source_filename)
-target_path = os.path.join(current_dir, target_filename)
 
 try:
     workbook = load_workbook(filename=source_path)
@@ -35,14 +48,7 @@ try:
     print(f"원본 파일을 '{target_filename}'으로 복사했습니다.")
 except Exception as e:
     print(f"파일 복사 중 오류: {e}")
-    exit()
-
-try:
-    workbook = load_workbook(filename=target_path)
-    print("엑셀 파일 로드 완료.")
-except Exception as e:
-    print(f"엑셀 파일 로드 중 오류: {e}")
-    exit()
+    sys.exit()  # sys.exit()를 호출하여 스크립트 실행을 종료합니다
 
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
@@ -119,12 +125,12 @@ for sheet_name in workbook.sheetnames:
                 data = {
                         "flagShip": False,
                         "country": "KR",
-                        #"latitudeCenter": "37.48654195241737",
-                        #"longitudeCenter": "127.0971466",
-                        #"latitudeA": "37.48953011783969",
-                        #"longitudeA": "127.09046253513489",
-                        #"latitudeB": "37.48355378699504",
-                        #"longitudeB": "127.10383066486511",
+                        "latitudeCenter": "37.48654195241737",
+                        "longitudeCenter": "127.0971466",
+                        "latitudeA": "37.48953011783969",
+                        "longitudeA": "127.09046253513489",
+                        "latitudeB": "37.48355378699504",
+                        "longitudeB": "127.10383066486511",
                         "query": "",
                         "clickAndCollect": False,
                         "skuId": product_code,  
@@ -188,7 +194,7 @@ for sheet_name in workbook.sheetnames:
         
 
         # 다음 제품 코드 검색 전에 대기
-        time.sleep(1)
+        time.sleep(10)
 
         print("Process completed. File saved successfully.")
         # 제품 코드 처리가 끝날 때마다 콘솔 출력에 공백 줄 추가
