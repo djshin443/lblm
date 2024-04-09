@@ -87,6 +87,11 @@ for sheet_name in workbook.sheetnames:
         continue
     start_row = last_processed_row + 1 if sheet_name == last_processed_sheet else 2
 
+    # 현재 시트의 전체 행 수 계산
+    total_rows = sheet.max_row
+    # 처리된 행 수를 저장할 변수 초기화
+    processed_rows = 0
+
     for row in range(start_row, sheet.max_row + 1):
         product_code = sheet.cell(row=row, column=1).value
         if not product_code:
@@ -97,7 +102,7 @@ for sheet_name in workbook.sheetnames:
         stock_status = 'N/A'
         website_status = NOT_AVAILABLE  # 초기 상태를 'N/A'로 설정
         stock_info_str = 'N/A'
-
+                        
         # 가격 정보 조회
         try:
             price = get_product_price(product_code)
@@ -202,7 +207,13 @@ for sheet_name in workbook.sheetnames:
         print(f"가격: {price}")
         print(f"전체 매장 수: {total_stores_count}, 서울/도산 매장 수: {seoul_dosan_count}")
         print(f"재고 있는 매장 목록:\n{stock_info_str}")
-  
+        
+        # 처리된 행 수를 업데이트하고 진행 상황을 출력
+        processed_rows += 1
+        progress_percentage = (processed_rows / total_rows) * 100  # 진행률 계산
+        print(f"현재 작업중인 시트: {sheet_name}, 진행 상태: {processed_rows}/{total_rows} ({progress_percentage:.2f}%)")
+        #print(f"현재 작업중인 시트: ({progress_percentage:.2f}%)")
+        
         # 다음 제품 코드 검색 전에 대기
         time.sleep(1)
         print("Process completed. File saved successfully.")
