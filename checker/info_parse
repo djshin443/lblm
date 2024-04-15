@@ -1,0 +1,75 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+options = Options()
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+options.add_experimental_option('useAutomationExtension', False)
+options.add_argument("--disable-blink-features=AutomationControlled")
+options.add_argument('--disable-infobars')
+options.add_argument('--headless')  # 필요한 경우 주석 해제
+options.add_argument('--window-size=1920,1080')
+options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
+options.add_argument('--log-level=3')  # 로그 레벨 추가
+
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver.implicitly_wait(30)
+
+try:
+    product_code = input("품번을 입력하세요: ")
+    driver.get(f'https://kr.louisvuitton.com/kor-kr/search/{product_code}')
+    print("현재 페이지 URL:", driver.current_url)
+    
+    # 제품 이름 추출
+    try:
+        product_name = driver.find_element(By.CLASS_NAME, 'lv-product__name').text
+    except:
+        product_name = "N/A"
+    print("제품 이름:", product_name)
+    
+    # 소재 정보 추출
+    try:
+        material = driver.find_element(By.CLASS_NAME, 'lv-product-variation-selector__value').text
+    except:
+        material = "N/A"
+    print("소재:", material)
+
+    # 제품 세부 정보 추출
+    try:
+        details_button = WebDriverWait(driver, 20).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, '.lv-product-features-buttons__button'))
+        )
+        details_button.click()
+        description_text = WebDriverWait(driver, 20).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, '#modalContent p'))
+        ).text
+    except:
+        description_text = "N/A"
+    print("제품 설명:", description_text)
+
+    # 사이즈 정보 추출
+    try:
+        size_container = driver.find_element(By.CSS_SELECTOR, '.lv-product-dimension.body-s.lv-product-detailed-features__dimensions')
+        size_text = size_container.text.replace("\n", " ").strip()
+    except Exception as e:
+        size_text = "N/A"
+    print("사이즈:", size_text)
+
+    # 세부 특징 추출
+    try:
+        features = driver.find_elements(By.CSS_SELECTOR, '.lv-product-detailed-features__description li')
+        feature_text = "\n".join([feature.text.strip() for feature in features if feature.text.strip() != ""])
+    except Exception as e:
+        feature_text = "N/A"
+
+    print("세부 특징:", feature_text)
+
+except Exception as e:
+    print("An error occurred:", e)
+
+finally:
+    driver.quit()
