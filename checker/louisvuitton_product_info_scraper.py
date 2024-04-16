@@ -1,3 +1,4 @@
+
 import requests
 import json
 from datetime import datetime
@@ -14,7 +15,6 @@ import os
 import time
 import sys
 
-# 사용자 정의 상태 변수 확장
 # 사용자 정의 상태 변수 확장
 ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
 NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
