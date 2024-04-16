@@ -15,11 +15,12 @@ import time
 import sys
 
 # 사용자 정의 상태 변수 확장
+# 사용자 정의 상태 변수 확장
 ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
 NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
 NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품
 ON_WEBSITE_NOT_SOLD = "O"  # 공홈에는 있지만 판매하지 않는 제품
-max_stores_to_save = 5  # 0이면 매장 전체 출력
+max_stores_to_save = 5  # 0이면 매장 전체 출력)
 
 current_dir = os.getcwd()
 datetime_now = datetime.now().strftime('%Y%m%d')
@@ -273,7 +274,7 @@ for sheet_name in workbook.sheetnames:
         sheet.cell(row=row_num, column=5, value=size)
         sheet.cell(row=row_num, column=6, value=features)
         sheet.cell(row=row_num, column=7, value=description)
-        sheet.cell(row=row_num, column=8, value=datetime_now)
+        sheet.cell(row=row_num, column=8, value=stock_status)
         sheet.cell(row=row_num, column=9, value=website_status)  # 열 추가 및 공홈 등록 상태 기록
         sheet.cell(row=row_num, column=10, value=stock_info_str)  # 재고 매장 정보 입력
 
