@@ -1,8 +1,10 @@
-
-import requests
+import os
+import sys
 import json
+import re
+import requests
 from datetime import datetime
-from openpyxl import load_workbook
+from openpyxl import load_workbook, Workbook
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
@@ -10,34 +12,23 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import re  # 정규 표현식을 사용하기 위해 re 모듈을 임포트합니다.
-import os
-import time
-import sys
 
-# 사용자 정의 상태 변수 확장
-ON_WEBSITE_SOLD = "O"  # 공홈에도 있고 실제로 판매 중인 제품
-NOT_ON_WEBSITE_SOLD = "X"  # 공홈에는 없지만 실제로 판매 중인 제품
-NOT_AVAILABLE = "N/A"  # 공홈에도 없고 실제로 판매하지 않는 제품
-ON_WEBSITE_NOT_SOLD = "O"  # 공홈에는 있지만 판매하지 않는 제품
-max_stores_to_save = 5  # 0이면 매장 전체 출력)
+# 사용자 정의 상태 변수
+ON_WEBSITE_SOLD = "O"
+NOT_ON_WEBSITE_SOLD = "X"
+NOT_AVAILABLE = "N/A"
+ON_WEBSITE_NOT_SOLD = "O"
+max_stores_to_save = 5
 
 current_dir = os.getcwd()
 datetime_now = datetime.now().strftime('%Y%m%d')
-
 source_filename = '루이비통.xlsx'
 target_filename = f'루이비통_{datetime_now}.xlsx'
-progress_file_name = f'progress_{datetime_now}.txt'  # 현재 날짜를 포함한 파일 이름
+progress_file_name = f'progress_{datetime_now}.txt'
 
 source_path = os.path.join(current_dir, source_filename)
 target_path = os.path.join(current_dir, target_filename)
 progress_file = os.path.join(current_dir, progress_file_name)
-
-def get_base_dir():
-    if getattr(sys, 'frozen', False):
-        return sys._MEIPASS
-    else:
-        return os.path.dirname(os.path.abspath(__file__))
 
 def save_progress(progress_file, sheet_name, row):
     with open(progress_file, 'w') as file:
@@ -52,70 +43,55 @@ def load_progress(progress_file):
                 return sheet_name, int(row)
     return None, 0
 
-# Selenium 설정
+# 웹 드라이버 설정
 options = Options()
 options.add_experimental_option("excludeSwitches", ["enable-automation"])
-options.add_experimental_option('useAutomationExtension', False)
 options.add_argument("--disable-blink-features=AutomationControlled")
 options.add_argument('--disable-infobars')
-options.add_argument('--headless')  # 필요한 경우 주석 해제
+options.add_argument('--headless')
 options.add_argument('--window-size=1920,1080')
 options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
-options.add_argument('--log-level=3')  # 로그 레벨 추가
+options.add_argument('--log-level=3')
 
-# 로그를 출력하지 않도록 설정
 service = ChromeService(ChromeDriverManager().install())
 service.log_path = os.devnull
-
-# 웹 드라이버 초기화
 driver = webdriver.Chrome(service=service, options=options)
 driver.implicitly_wait(30)
 
+workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()
+workbook.save(filename=target_path)
 
-try:
-    # 엑셀 파일 불러오기 및 복사
-    workbook = load_workbook(filename=source_path)
-    workbook.save(filename=target_path)
-    print(f"원본 파일을 '{target_filename}'으로 복사했습니다.")
-except Exception as e:
-    print(f"파일 복사 중 오류: {e}")
-    sys.exit()
-
-# 진행 상황 로드
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
 # 제품 정보 및 매장 가격 가져오기 함수
 def get_product_info(product_code):
     try:
-        # 웹 페이지에서 제품 정보 가져오기
         driver.get(f'https://kr.louisvuitton.com/kor-kr/search/{product_code}')
-        print("현재 페이지 URL:", driver.current_url)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "body")))
 
-        # 가격 정보 추출
+        if "product not found" in driver.page_source.lower():
+            raise ValueError("Product not found")
+
         try:
             price_element = WebDriverWait(driver, 10).until(
                 EC.visibility_of_element_located((By.CLASS_NAME, 'lv-product__price'))
             )
             price_text = price_element.text.strip()
-            # '₩' 기호와 추가 공백을 제거합니다.
             price_text = re.sub(r'[₩\s]', '', price_text)
         except Exception as e:
-            print("가격 정보를 불러오는 중 예외 발생:", e)
+            print(f"가격 정보를 불러오는 중 예외 발생: {e}")
             price_text = "N/A"
 
-        # 제품 이름 추출
         try:
             product_name = driver.find_element(By.CLASS_NAME, 'lv-product__name').text
         except:
             product_name = "N/A"
 
-        # 소재 정보 추출
         try:
             material = driver.find_element(By.CLASS_NAME, 'lv-product-variation-selector__value').text
         except:
             material = "N/A"
 
-        # 제품 세부 정보 추출
         try:
             details_button = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, '.lv-product-features-buttons__button'))
@@ -127,7 +103,6 @@ def get_product_info(product_code):
         except:
             description_text = "N/A"
 
-        # 사이즈 정보 추출
         try:
             size_element = driver.find_element(By.CSS_SELECTOR, '#modalContent > div.lv-product-detailed-features > div > div.lv-product-dimension.body-s.lv-product-detailed-features__dimensions')
             if size_element:
@@ -135,11 +110,9 @@ def get_product_info(product_code):
                 size_text = ' '.join(size_text.splitlines())  
             else:
                 size_text = "N/A"
-
         except Exception as e:
             size_text = "N/A"
 
-        # 세부 특징 추출
         try:
             features = driver.find_elements(By.CSS_SELECTOR, '.lv-product-detailed-features__description li')
             feature_text = "\n".join([feature.text.strip() for feature in features if feature.text.strip() != ""])
@@ -149,7 +122,7 @@ def get_product_info(product_code):
         return price_text, product_name, material, size_text, feature_text, description_text
 
     except Exception as e:
-        print("An error occurred:", e)
+        print(f"An error occurred with product {product_code}: {str(e)}")
         return "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
 
 # 각 제품 코드에 대한 정보 가져오기
