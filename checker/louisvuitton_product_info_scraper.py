@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 from openpyxl import load_workbook
 from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -63,9 +63,14 @@ options.add_argument('--window-size=1920,1080')
 options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
 options.add_argument('--log-level=3')  # 로그 레벨 추가
 
+# 로그를 출력하지 않도록 설정
+service = ChromeService(ChromeDriverManager().install())
+service.log_path = os.devnull
+
 # 웹 드라이버 초기화
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+driver = webdriver.Chrome(service=service, options=options)
 driver.implicitly_wait(30)
+
 
 try:
     # 엑셀 파일 불러오기 및 복사
