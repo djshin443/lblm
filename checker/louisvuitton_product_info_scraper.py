@@ -301,6 +301,7 @@ for sheet_name in workbook.sheetnames:
         
         # 저장
         workbook.save(filename=target_path)
+        save_progress(progress_file, sheet_name, row_num)  # 수정된 부분
         print(f"제품 정보를 엑셀 파일에 저장했습니다.")
 
 # 작업 완료 메시지 출력
