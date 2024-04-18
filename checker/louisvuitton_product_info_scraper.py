@@ -93,6 +93,13 @@ workbook.save(filename=target_path)
 
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
+# 엑셀 파일에 정보를 기록하는 로직
+def write_to_cell(sheet, column, row_num, value):
+    if value is None or value == '' or value == '0':  # '0' 값을 'N/A'로 처리
+        sheet.cell(row=row_num, column=column, value='N/A')
+    else:
+        sheet.cell(row=row_num, column=column, value=value)
+
 # 제품 정보 및 매장 가격 가져오기 함수
 def get_product_info(product_code):
     try:
@@ -171,8 +178,10 @@ for sheet_name in workbook.sheetnames:
         continue
     sheet = workbook[sheet_name]
     print(f"시트 '{sheet_name}' 처리 중...")
-
+    
     for row_num, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+        product_code = row[0]
+        product_price, product_name, material, size, features, description = get_product_info(product_code)
         if last_processed_sheet == sheet_name and row_num <= last_processed_row:
             continue
 
@@ -285,17 +294,17 @@ for sheet_name in workbook.sheetnames:
         else:
             website_status = ON_WEBSITE_SOLD
 
-        # 결과를 엑셀 파일에 쓰기
-        sheet.cell(row=row_num, column=2, value=product_price) #매장가
-        sheet.cell(row=row_num, column=3, value=website_status) #공홈여부
-        sheet.cell(row=row_num, column=4, value=stock_status) #재고햔황
-        sheet.cell(row=row_num, column=5, value=stock_info_str)  #재고매장
-        sheet.cell(row=row_num, column=6, value=product_name) #제품명
-        sheet.cell(row=row_num, column=7, value=material) #소재
-        sheet.cell(row=row_num, column=8, value=size) #사이즈
-        sheet.cell(row=row_num, column=9, value=features) #특징
-        sheet.cell(row=row_num, column=10, value=description) #세부 설명
-        
+        # 각 셀에 값을 쓰는 부분을 'write_to_cell' 함수를 사용해 대체합니다.
+        write_to_cell(sheet, 2, row_num, product_price)  # 매장가
+        write_to_cell(sheet, 3, row_num, website_status)  # 공홈여부
+        write_to_cell(sheet, 4, row_num, stock_status)  # 재고현황
+        write_to_cell(sheet, 5, row_num, stock_info_str)  # 재고매장
+        write_to_cell(sheet, 6, row_num, product_name)  # 제품명
+        write_to_cell(sheet, 7, row_num, material)  # 소재
+        write_to_cell(sheet, 8, row_num, size)  # 사이즈
+        write_to_cell(sheet, 9, row_num, features)  # 특징
+        write_to_cell(sheet, 10, row_num, description)  # 세부 설명
+                
         # 제품 정보 출력
         def print_product_info(product_code, product_price, website_status, stock_status, stock_info, product_name, material, size, features, description):
             # 문자열을 주어진 너비에 맞춰 왼쪽으로 정렬하고 줄바꿈
