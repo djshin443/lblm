@@ -1,4 +1,4 @@
-import os  # 필요한 경우 이미 코드에 포함되어 있어요.
+import os  
 import sys
 import json
 import re
@@ -15,6 +15,31 @@ from selenium.webdriver.support import expected_conditions as EC
 from colorama import Fore, Style
 import textwrap
 
+
+def create_initial_file():
+    # 파일 이름 정의
+    source_filename = '루이비통.xlsx'
+    current_dir = os.getcwd()
+    source_path = os.path.join(current_dir, source_filename)
+    
+    # 파일이 존재하지 않는 경우 생성
+    if not os.path.exists(source_path):
+        workbook = Workbook()
+        sheet = workbook.active
+        columns_titles = ['품번', '매장가', '공홈여부', '재고현황', '재고매장', '제품명', '소재', '사이즈', '특징', '세부설명']
+        
+        # 열 제목 설정
+        for col, title in enumerate(columns_titles, start=1):
+            sheet.cell(row=1, column=col, value=title)
+        
+        workbook.save(filename=source_path)
+        print("루이비통.xlsx 파일을 생성하였습니다. 생성된 파일에 품번을 입력하고 Enter를 눌러 계속 진행하세요.")
+    
+    # 사용자 입력 대기
+    input()
+
+if __name__ == '__main__':
+    create_initial_file()
 
 # 사용자 정의 상태 변수
 ON_WEBSITE_SOLD = "O" # 공홈에도 있고 실제로 판매 중인 제품
