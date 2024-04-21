@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import re
 import time
+import os
 
 # 크롬 옵션 설정
 options = Options()
@@ -67,21 +68,20 @@ for start_url, sheet_name in start_urls.items():
             print(f"An error occurred for {start_url}: {e}")
             break
 
+    # 각 시트가 끝난 후 데이터프레임 생성
+    df_product_numbers = pd.DataFrame(list(unique_product_numbers_sheets[sheet_name]), columns=["품번"])
+
+    # 기존 엑셀 파일 불러오기
+    output_excel_path = "루이비통.xlsx"
+    if os.path.exists(output_excel_path):
+        with pd.ExcelWriter(output_excel_path, engine='openpyxl', mode='a') as writer:
+            df_product_numbers.to_excel(writer, sheet_name=sheet_name, startrow=1, index=False, header=False)
+            worksheet = writer.sheets[sheet_name]
+            worksheet.cell(row=1, column=1, value='품번')  # 첫 번째 행 첫 번째 열(A1)에 '품번'을 기록
+    else:
+        with pd.ExcelWriter(output_excel_path, engine='openpyxl', mode='w') as writer:
+            df_product_numbers.to_excel(writer, sheet_name=sheet_name, startrow=1, index=False, header=False)
+            worksheet = writer.sheets[sheet_name]
+            worksheet.cell(row=1, column=1, value='품번')  # 첫 번째 행 첫 번째 열(A1)에 '품번'을 기록
+
 driver.quit()  # WebDriver 종료
-
-# 엑셀 파일에 품번을 저장
-output_excel_path = "product_info.xlsx"
-
-with pd.ExcelWriter(output_excel_path, engine='xlsxwriter') as writer:
-    for sheet_name, product_numbers in unique_product_numbers_sheets.items():
-        # 데이터프레임 생성
-        df_product_numbers = pd.DataFrame(list(product_numbers), columns=["품번"])
-        
-        # 첫 번째 행(인덱스 행)에 '품번'을 추가하지 않고 데이터프레임 기록
-        df_product_numbers.to_excel(writer, sheet_name=sheet_name, startrow=1, index=False, header=False)
-        
-        # 작업 중인 워크시트 객체를 가져옴
-        worksheet = writer.sheets[sheet_name]
-        
-        # 첫 번째 행 첫 번째 열(A1)에 '품번'을 한 번만 추가
-        worksheet.write('A1', '품번')
