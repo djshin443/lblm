@@ -15,28 +15,31 @@ from selenium.webdriver.support import expected_conditions as EC
 from colorama import Fore, Style
 import textwrap
 
-
 def create_initial_file():
     # 파일 이름 정의
     source_filename = '루이비통.xlsx'
     current_dir = os.getcwd()
     source_path = os.path.join(current_dir, source_filename)
     
-    # 파일이 존재하지 않는 경우 생성
-    if not os.path.exists(source_path):
-        workbook = Workbook()
-        sheet = workbook.active
-        columns_titles = ['품번', '매장가', '공홈여부', '재고현황', '재고매장', '제품명', '소재', '사이즈', '특징', '세부설명']
-        
-        # 열 제목 설정
-        for col, title in enumerate(columns_titles, start=1):
-            sheet.cell(row=1, column=col, value=title)
-        
-        workbook.save(filename=source_path)
-        print("루이비통.xlsx 파일을 생성하였습니다. 생성된 파일에 품번을 입력하고 Enter를 눌러 계속 진행하세요.")
+    # 파일이 존재하는지 확인
+    if os.path.exists(source_path):
+        print("루이비통.xlsx 파일이 이미 존재합니다. 계속 진행합니다.")  # 파일이 존재하면 바로 진행
+        return  # 사용자 입력 대기를 건너뛰고 바로 종료
     
-    # 사용자 입력 대기
-    input()
+    # 파일이 존재하지 않는 경우 생성
+    workbook = Workbook()
+    sheet = workbook.active
+    columns_titles = ['품번', '매장가', '공홈여부', '재고현황', '재고매장', '제품명', '소재', '사이즈', '특징', '세부설명']
+    
+    # 열 제목 설정
+    for col, title in enumerate(columns_titles, start=1):
+        sheet.cell(row=1, column=col, value=title)
+    
+    workbook.save(filename=source_path)
+    print("루이비통.xlsx 파일을 생성하였습니다. 생성된 파일에 품번을 입력하고 Enter를 눌러 계속 진행하세요.")
+    
+    # 사용자 입력 대기 (파일이 새로 생성된 경우에만)
+    input()  # 파일 생성 시에만 'Enter'를 대기
 
 if __name__ == '__main__':
     create_initial_file()
@@ -88,8 +91,15 @@ service.log_path = os.devnull
 driver = webdriver.Chrome(service=service, options=options)
 driver.implicitly_wait(30)
 
-workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()
-workbook.save(filename=target_path)
+workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()  # 워크북 생성/불러오기
+
+# 열 제목 강제 삽입
+sheet = workbook.active
+columns_titles = ['품번', '매장가', '공홈여부', '재고현황', '재고매장', '제품명', '소재', '사이즈', '특징', '세부설명']
+for col, title in enumerate(columns_titles, start=1):
+    sheet.cell(row=1, column=col, value=title)  # 1행에 강제로 제목 삽입
+
+workbook.save(filename=target_path)  # 워크북 저장
 
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
