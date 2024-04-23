@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Store Availability Checker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            text-align: center;
+            padding: 20px;
+        }
+        form {
+            margin: 20px auto;
+            display: flex;
+            flex-direction: column;
+            width: 90%;
+            max-width: 400px;
+        }
+        input, button {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border: none;
+        }
+        input {
+            background-color: #333;
+            color: #fff;
+        }
+        button {
+            background-color: #1a73e8;
+            color: #fff;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1565c0;
+        }
+
+        /* 새로운 그레이색 블록 스타일 */
+        #store_info {
+            background-color: #444;
+            color: #ffffff;
+            padding: 20px;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Welcome to Store Availability Checker</h1>
+    <!-- POST 메서드로 폼을 제출 -->
+    <form id="sku_form" action="/check_availability" method="post">
+        <label for="sku_id">Enter SKU ID:</label>
+        <input type="text" id="sku_id" name="sku_id" required> <!-- SKU ID를 전송 -->
+        <!-- 폼을 제출하는 버튼 -->
+        <button type="submit">Check Availability</button>
+    </form>
+
+    <!-- 매장 정보 표시 블록 -->
+    <div id="store_info" style="display:none;">
+        <h2>Store Information</h2>
+        <p id="store_name">Store Name: Example Store</p>
+        <p id="store_location">Store Location: Example Location</p>
+    </div>
+
+    <script>
+        function displayStoreInfo() {
+            var storeInfo = document.getElementById("store_info");
+            storeInfo.style.display = "block";
+        }
+    </script>
+</body>
+</html>
