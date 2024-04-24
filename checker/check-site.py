@@ -87,7 +87,8 @@ def login():
 
 @app.route('/check_availability', methods=['POST'])
 def check_availability():
-    sku_id = request.form.get('sku_id', '').upper()  # 대문자로 변환
+    #sku_id = request.form.get('sku_id', '').upper()  # 대문자로 변환
+    sku_id = request.form.get('sku_id', '').replace(" ", "").upper()
 
     if not sku_id:
         return render_template('result.html', message='SKU ID is required.')
