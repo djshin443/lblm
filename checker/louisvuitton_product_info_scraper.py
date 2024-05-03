@@ -66,7 +66,6 @@ def save_progress(progress_file, sheet_name, row):
     with open(progress_file, 'w') as file:
         file.write(f"{sheet_name},{row}")
 
-# 진행 상태를 불러오는 함수입니다.
 def load_progress(progress_file):
     if os.path.exists(progress_file):
         with open(progress_file, 'r') as file:
@@ -76,7 +75,6 @@ def load_progress(progress_file):
                 return sheet_name, int(row)
     return None, 0
 
-# 웹 드라이버 설정
 options = Options()
 options.add_experimental_option("excludeSwitches", ["enable-automation"])
 options.add_argument("--disable-blink-features=AutomationControlled")
@@ -91,24 +89,27 @@ service.log_path = os.devnull
 driver = webdriver.Chrome(service=service, options=options)
 driver.implicitly_wait(30)
 
-workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()  # 워크북 생성/불러오기
+workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()
 
-# 열 제목 강제 삽입
-sheet = workbook.active
+# 모든 시트에 열 제목 강제 삽입
 columns_titles = ['품번', '매장가', '공홈여부', '재고현황', '재고매장', '제품명', '소재', '사이즈', '특징', '세부설명']
-for col, title in enumerate(columns_titles, start=1):
-    sheet.cell(row=1, column=col, value=title)  # 1행에 강제로 제목 삽입
+for sheet in workbook.worksheets:
+    for col, title in enumerate(columns_titles, start=1):
+        sheet.cell(row=1, column=col, value=title)
 
-workbook.save(filename=target_path)  # 워크북 저장
-
+workbook.save(filename=target_path)
 last_processed_sheet, last_processed_row = load_progress(progress_file)
 
 # 엑셀 파일에 정보를 기록하는 로직
 def write_to_cell(sheet, column, row_num, value):
     if value is None or value == '' or value == '0':  # '0' 값을 'N/A'로 처리
-        sheet.cell(row=row_num, column=column, value='N/A')
-    else:
-        sheet.cell(row=row_num, column=column, value=value)
+        value = 'N/A'
+
+    # 엑셀에서 허용하지 않는 문자 제거
+    value = ''.join(char for char in value if char.isprintable())
+
+    # 셀에 값 쓰기
+    sheet.cell(row=row_num, column=column, value=value)
 
 # 제품 정보 및 매장 가격 가져오기 함수
 def get_product_info(product_code):
@@ -223,7 +224,6 @@ for sheet_name in workbook.sheetnames:
                                 'client_id': '607e3016889f431fb8020693311016c9',
                                 'Origin': 'https://kr.louisvuitton.com',
                                 'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-                                'Cookie': '123'
                             }
                         data = {
                                 "flagShip": False,
