@@ -87,7 +87,7 @@ options.add_argument('--log-level=3')
 service = ChromeService(ChromeDriverManager().install())
 service.log_path = os.devnull
 driver = webdriver.Chrome(service=service, options=options)
-driver.implicitly_wait(30)
+driver.implicitly_wait(5)
 
 workbook = load_workbook(filename=source_path) if os.path.exists(source_path) else Workbook()
 
