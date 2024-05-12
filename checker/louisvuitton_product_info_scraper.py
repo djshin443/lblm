@@ -237,7 +237,13 @@ if last_processed_row is None or last_processed_row < start_row:
 print(f"이어서 작업을 시작합니다. 시트: {last_processed_sheet}, 행: {last_processed_row}")
 
 # 모든 시트를 순회하며 처리
+sheet_found = False
 for sheet_name in workbook.sheetnames:
+    if sheet_name == last_processed_sheet:
+        sheet_found = True
+    if not sheet_found:
+        continue
+
     sheet = workbook[sheet_name]
     last_row = sheet.max_row
 
