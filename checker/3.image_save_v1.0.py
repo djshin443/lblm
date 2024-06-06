@@ -29,8 +29,8 @@ def setup_driver():
     options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument('--disable-infobars')
-    options.add_argument('--headless')
-    options.add_argument('--window-size=1920,1080')
+    #options.add_argument('--headless')
+    options.add_argument('--start-maximized')  # 창 최대화
     options.add_argument('--log-level=3')
     options.add_argument('--silent')  # Suppress all console output from Chrome
     options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
@@ -89,6 +89,7 @@ def scroll_down_slowly(driver, scroll_pause_time=1, scroll_increment=500):
             break
         last_height = new_height
 
+
 def search_product(driver, product_code):
     try:
         search_button = WebDriverWait(driver, 10).until(
@@ -104,8 +105,22 @@ def search_product(driver, product_code):
         search_input.send_keys(product_code)
         search_input.send_keys(Keys.ENTER)
         time.sleep(5)
+
+        # 팝업 닫기
+        close_popup(driver)
     except Exception as e:
         logger.error(f"검색 중 오류 발생: {e}")
+
+
+def close_popup(driver):
+    try:
+        close_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, ".lv-notifications__close.lv-button.-only-icon"))
+        )
+        close_button.click()
+        logger.info("Popup closed")
+    except Exception as e:
+        logger.info("No popup found to close")
 
 def get_image_urls(driver, product_code):
     logger.info(f"Searching images for product code: {product_code}")
@@ -165,34 +180,40 @@ def read_product_codes_from_excel(file_path):
 def sanitize_folder_name(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
+excel_file_path = "./루이비통.xlsx"
+all_product_codes = read_product_codes_from_excel(excel_file_path)
+
 def main():
-    excel_file_path = "./루이비통.xlsx"
-    logger.info(f"Starting process with Excel file: {excel_file_path}")
-    all_product_codes = read_product_codes_from_excel(excel_file_path)
+    while True:
+        try:
+            driver = setup_driver()
+            driver.get("https://kr.louisvuitton.com/")
 
-    driver = setup_driver()
-    driver.get("https://kr.louisvuitton.com/")
+            for sheet_name, product_codes in all_product_codes.items():
+                sanitized_sheet_name = sanitize_folder_name(sheet_name)
+                for product_code in product_codes:
+                    sanitized_product_code = sanitize_folder_name(str(product_code))
+                    try:
+                        image_urls = get_image_urls(driver, product_code)
+                        if not image_urls:
+                            continue
 
-    for sheet_name, product_codes in all_product_codes.items():
-        sanitized_sheet_name = sanitize_folder_name(sheet_name)
-        for product_code in product_codes:
-            sanitized_product_code = sanitize_folder_name(str(product_code))
-            try:
-                image_urls = get_image_urls(driver, product_code)
-                if not image_urls:
-                    continue
+                        folder_path = os.path.join("image", sanitized_sheet_name, sanitized_product_code)
 
-                folder_path = os.path.join("image", sanitized_sheet_name, sanitized_product_code)
+                        for idx, url in enumerate(image_urls):
+                            logger.info(f"Downloading image: {url}")
+                            download_image(url, folder_path, f"{sanitized_product_code}_image_{idx + 1}")
+                    except Exception as e:
+                        logger.error(f"Error occurred while processing product code {product_code}: {e}")
+                        continue
 
-                for idx, url in enumerate(image_urls):
-                    logger.info(f"Downloading image: {url}")
-                    download_image(url, folder_path, f"{sanitized_product_code}_image_{idx + 1}")
-            except Exception as e:
-                logger.error(f"Error occurred while processing product code {product_code}: {e}")
-                continue
-
-    driver.quit()
-    logger.info("Process completed.")
+            driver.quit()
+            logger.info("Process completed.")
+            break  # 작업이 성공적으로 완료되면 반복을 중단
+        except Exception as e:
+            logger.error(f"An unexpected error occurred: {e}")
+            logger.info("Restarting in 5 seconds...")
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
