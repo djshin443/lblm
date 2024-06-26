@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
+from random import uniform
 
 # Setup logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -38,35 +39,43 @@ def setup_driver():
     driver = webdriver.Chrome(service=service, options=options)
     return driver
 
-def download_image(image_url, folder, filename):
+def download_image(image_url, folder, filename, max_retries=3, timeout=30):
     if not os.path.exists(folder):
         os.makedirs(folder)
 
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/plain, */*',
     }
 
-    try:
-        response = requests.get(image_url, headers=headers)
-        response.raise_for_status()
+    retries = 0
+    while retries < max_retries:
+        try:
+            response = requests.get(image_url, headers=headers, timeout=timeout)
+            response.raise_for_status()
 
-        file_path = os.path.join(folder, f'{filename}.png')
-        file_counter = 1
-        base_file_path = file_path
+            file_path = os.path.join(folder, f'{filename}.png')
+            file_counter = 1
+            base_file_path = file_path
 
-        while os.path.exists(file_path):
-            file_path = f"{base_file_path}_{file_counter}.png"
-            file_counter += 1
+            while os.path.exists(file_path):
+                file_path = f"{base_file_path}_{file_counter}.png"
+                file_counter += 1
 
-        with open(file_path, 'wb') as file:
-            file.write(response.content)
+            with open(file_path, 'wb') as file:
+                file.write(response.content)
 
-        download_logger.info(f"Downloaded: {file_path}")
-    except requests.exceptions.RequestException as e:
-        download_logger.error(f"Failed to download {image_url}")
-        download_logger.error(f"Error: {e}")
+            download_logger.info(f"Downloaded: {file_path}")
+            return
+        except requests.exceptions.RequestException as e:
+            download_logger.error(f"Failed to download {image_url}")
+            download_logger.error(f"Error: {e}")
+            retries += 1
+            download_logger.info(f"Retrying download... (Attempt {retries}/{max_retries})")
+            time.sleep(5)  # Wait for 5 seconds before retrying
+
+    download_logger.error(f"Failed to download {image_url} after {max_retries} retries")
 
 def get_largest_image_url(srcset):
     url_pattern = re.compile(r'(https?:\/\/[^\s,]+)\s+(\d+)w')
@@ -203,6 +212,7 @@ def main():
                         for idx, url in enumerate(image_urls):
                             logger.info(f"Downloading image: {url}")
                             download_image(url, folder_path, f"{sanitized_product_code}_image_{idx + 1}")
+                            time.sleep(uniform(1, 3))  # Random sleep between 1 and 3 seconds
                     except Exception as e:
                         logger.error(f"Error occurred while processing product code {product_code}: {e}")
                         continue
