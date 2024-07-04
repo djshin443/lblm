@@ -3,6 +3,7 @@ import re
 import requests
 import time
 import logging
+from random import uniform
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
@@ -12,11 +13,19 @@ from openpyxl import load_workbook
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-from random import uniform
+from selenium.common.exceptions import ElementClickInterceptedException, TimeoutException
 
 # Setup logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
+
+# File handler for error logging
+log_file_path = 'combined_log.txt'
+file_handler = logging.FileHandler(log_file_path)
+file_handler.setLevel(logging.INFO)
+file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
 
 # Additional logger for image download info
 download_logger = logging.getLogger('download_logger')
@@ -24,22 +33,29 @@ download_logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
 console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 download_logger.addHandler(console_handler)
+download_logger.addHandler(file_handler)  # Add file handler to download logger as well
+
+# Suppress unnecessary stack trace log
+for logger_name in ['selenium.webdriver.remote.remote_connection', 'urllib3.connectionpool']:
+    log = logging.getLogger(logger_name)
+    log.setLevel(logging.WARNING)
 
 def setup_driver():
     options = Options()
     options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument('--disable-infobars')
-    #options.add_argument('--headless')
+    # options.add_argument('--headless')
     options.add_argument('--start-maximized')  # 창 최대화
     options.add_argument('--log-level=3')
     options.add_argument('--silent')  # Suppress all console output from Chrome
-    options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
+    options.add_argument(
+        'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
     service = ChromeService(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=options)
     return driver
 
-def download_image(image_url, folder, filename, max_retries=3, timeout=30):
+def download_image(image_url, folder, filename, max_retries=3, timeout=60):
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -67,7 +83,9 @@ def download_image(image_url, folder, filename, max_retries=3, timeout=30):
                 file.write(response.content)
 
             download_logger.info(f"Downloaded: {file_path}")
-            return
+            with open(log_file_path, 'a') as log_file:
+                log_file.write(f"Success: {file_path}\n")
+            return True
         except requests.exceptions.RequestException as e:
             download_logger.error(f"Failed to download {image_url}")
             download_logger.error(f"Error: {e}")
@@ -76,6 +94,9 @@ def download_image(image_url, folder, filename, max_retries=3, timeout=30):
             time.sleep(5)  # Wait for 5 seconds before retrying
 
     download_logger.error(f"Failed to download {image_url} after {max_retries} retries")
+    with open(log_file_path, 'a') as log_file:
+        log_file.write(f"Failed: {image_url}\n")
+    return False
 
 def get_largest_image_url(srcset):
     url_pattern = re.compile(r'(https?:\/\/[^\s,]+)\s+(\d+)w')
@@ -98,28 +119,51 @@ def scroll_down_slowly(driver, scroll_pause_time=1, scroll_increment=500):
             break
         last_height = new_height
 
-
 def search_product(driver, product_code):
     try:
         search_button = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, ".lv-header__utility-label.list-label-s"))
         )
+        driver.execute_script("arguments[0].scrollIntoView(true);", search_button)
+        time.sleep(uniform(5, 10))  # Allow time for scrolling and random wait
         search_button.click()
-        time.sleep(2)
+        time.sleep(uniform(5, 10))  # Random wait after click
 
         search_input = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "#searchHeaderInput"))
         )
         search_input.clear()
+        time.sleep(uniform(5, 10))  # Random wait before typing
         search_input.send_keys(product_code)
         search_input.send_keys(Keys.ENTER)
-        time.sleep(5)
+        time.sleep(uniform(5, 10))  # Random wait after typing
 
         # 팝업 닫기
         close_popup(driver)
+
+        # 검색 결과 확인
+        no_results = driver.find_elements(By.CSS_SELECTOR, ".lv-no-search-results")
+        if no_results:
+            logger.warning(f"No search results found for product code: {product_code}")
+            with open(log_file_path, 'a') as log_file:
+                log_file.write(f"No product found: {product_code}\n")
+            return False
+    except ElementClickInterceptedException as e:
+        logger.error(f"검색 중 오류 발생: {e}")
+        with open(log_file_path, 'a') as log_file:
+            log_file.write(f"Search error (ElementClickIntercepted): {product_code}\n")
+        return False
+    except TimeoutException as e:
+        logger.error(f"Timeout during search: {e}")
+        with open(log_file_path, 'a') as log_file:
+            log_file.write(f"Search error (Timeout): {product_code}\n")
+        return False
     except Exception as e:
         logger.error(f"검색 중 오류 발생: {e}")
-
+        with open(log_file_path, 'a') as log_file:
+            log_file.write(f"Search error (General): {product_code}\n")
+        return False
+    return True
 
 def close_popup(driver):
     try:
@@ -128,12 +172,19 @@ def close_popup(driver):
         )
         close_button.click()
         logger.info("Popup closed")
-    except Exception as e:
+    except TimeoutException:
         logger.info("No popup found to close")
+
+def go_to_homepage(driver):
+    driver.get("https://kr.louisvuitton.com/")
+    time.sleep(uniform(5, 10))  # Wait for the homepage to load
 
 def get_image_urls(driver, product_code):
     logger.info(f"Searching images for product code: {product_code}")
-    search_product(driver, product_code)
+    if not search_product(driver, product_code):
+        logger.info(f"No product found for product code: {product_code}")
+        go_to_homepage(driver)
+        return []
 
     scroll_down_slowly(driver, scroll_pause_time=2)
     time.sleep(5)
@@ -147,6 +198,7 @@ def get_image_urls(driver, product_code):
     for idx, image_element in enumerate(image_elements):
         logger.info(f"Processing image element {idx + 1}")
         srcset = image_element.get_attribute("srcset") or image_element.get_attribute("data-srcset")
+        fetch_priority = image_element.get_attribute("fetchpriority")
 
         if srcset:
             logger.info(f"Found srcset: {srcset}")
@@ -158,6 +210,9 @@ def get_image_urls(driver, product_code):
                     if first_product_code is None:
                         first_product_code = image_product_code
                     if image_product_code == first_product_code:
+                        if fetch_priority == "high":
+                            logger.info("Image has high fetch priority, waiting before processing...")
+                            time.sleep(10)  # Wait longer for high priority images to load
                         image_urls.append(largest_image_url)
                         seen_urls.add(largest_image_url)
                         logger.info(f"Selected image URL: {largest_image_url}")
@@ -173,6 +228,7 @@ def get_image_urls(driver, product_code):
     else:
         logger.info(f"Found {len(image_urls)} image URLs for product code: {product_code}")
 
+    go_to_homepage(driver)
     return image_urls
 
 def read_product_codes_from_excel(file_path):
@@ -196,7 +252,7 @@ def main():
     while True:
         try:
             driver = setup_driver()
-            driver.get("https://kr.louisvuitton.com/")
+            go_to_homepage(driver)
 
             for sheet_name, product_codes in all_product_codes.items():
                 sanitized_sheet_name = sanitize_folder_name(sheet_name)
@@ -208,13 +264,24 @@ def main():
                             continue
 
                         folder_path = os.path.join("image", sanitized_sheet_name, sanitized_product_code)
-
+                        download_logger.info(f"Processing product code: {product_code}")
+                        
                         for idx, url in enumerate(image_urls):
                             logger.info(f"Downloading image: {url}")
-                            download_image(url, folder_path, f"{sanitized_product_code}_image_{idx + 1}")
-                            time.sleep(uniform(1, 3))  # Random sleep between 1 and 3 seconds
+                            success = download_image(url, folder_path, f"{sanitized_product_code}_image_{idx + 1}")
+                            if success:
+                                logger.error(f"Download successful for {url}")
+                            else:
+                                logger.error(f"Download failed for {url}")
+                            wait_time = uniform(30, 60)
+                            logger.info(f"Waiting for {wait_time:.2f} seconds before next download...")
+                            time.sleep(wait_time)  # Wait for 30 to 60 seconds between each download
+                        go_to_homepage(driver)
                     except Exception as e:
                         logger.error(f"Error occurred while processing product code {product_code}: {e}")
+                        with open(log_file_path, 'a') as log_file:
+                            log_file.write(f"Error occurred for product code {product_code}: {e}\n")
+                        go_to_homepage(driver)
                         continue
 
             driver.quit()
@@ -223,6 +290,8 @@ def main():
         except Exception as e:
             logger.error(f"An unexpected error occurred: {e}")
             logger.info("Restarting in 5 seconds...")
+            with open(log_file_path, 'a') as log_file:
+                log_file.write(f"Unexpected error: {e}\n")
             time.sleep(5)
 
 if __name__ == "__main__":
