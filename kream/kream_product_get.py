@@ -12,25 +12,64 @@ from datetime import datetime, timedelta
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
 
 # 변수 정의
+
+# 로그인 버튼의 CSS 선택자
 LOGIN_BUTTON_CSS = 'a.top_link[href="/login"]'
+
+# 검색 결과 항목의 CSS 선택자
 SEARCH_RESULT_ITEM_CSS = '.search_result_item'
+
+# 빠른배송 태그의 CSS 선택자
 QUICK_DELIVERY_TAG_CSS = '.tag.display_tag_item .tag_text'
+
+# 제품 이름의 CSS 선택자
 PRODUCT_NAME_CSS = '.product_info_product_name .name'
+
+# 제품 URL의 CSS 선택자
 PRODUCT_URL_CSS = 'a'
+
+# 제품 상세 정보 상자의 CSS 선택자
 DETAIL_BOX_CSS = '.detail-box'
+
+# 제품 타이틀의 CSS 선택자
 TITLE_CSS = '.main-title-container .title'
+
+# 제품 서브타이틀의 CSS 선택자
 SUBTITLE_CSS = '.main-title-container .sub-title'
+
+# 모델 번호의 XPath 선택자
 MODEL_NUM_XPATH = "//div[@class='detail-box']//div[contains(text(), '모델번호')]/following-sibling::div[@class='product_info']"
+
+# 더보기 버튼의 CSS 선택자 (거래 내역 확인용)
 MORE_BUTTON_CSS = 'a[data-v-420a5cda][data-v-32864b0e].btn.outlinegrey.full.medium'
+
+# 거래 내역 항목의 CSS 선택자
 TRADE_HISTORY_CSS = '.body_list'
+
+# 거래 내역 팝업 닫기 버튼의 CSS 선택자
 CLOSE_BUTTON_CSS = '#wrap > div.layout__main--without-search.container.detail.lg > div.content > div.column_bind > div:nth-child(2) > div > div.layer_market_price.layer.lg > div.layer_container > a > svg'
+
+# 즉시구매 버튼의 XPath 선택자
 BUY_BUTTON_XPATH = '/html/body/div/div/div/div[3]/div[1]/div[1]/div[2]/div/div[1]/div[5]/div/button[1]/strong'
+
+# 대체 즉시구매 버튼의 CSS 선택자
 ALT_BUY_BUTTON_CSS = 'button.btn_action .title'
+
+# 옵션 요소들의 CSS 선택자
 OPTION_ELEMENTS_CSS = 'div.select_area ul.select_list li.select_item button.select_link.buy'
+
+# ONE SIZE 옵션의 CSS 선택자
 ONE_SIZE_CSS = 'button.select_link.buy'
+
+# 사이즈의 CSS 선택자
 SIZE_CSS = '.size'
+
+# 가격의 CSS 선택자
 PRICE_CSS = '.price'
+
+# 빠른배송 아이콘의 CSS 선택자
 EXPRESS_CSS = '.ico-express'
+
 
 def setup_driver():
     options = Options()
