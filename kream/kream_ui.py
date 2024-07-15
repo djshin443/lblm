@@ -13,12 +13,16 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 import customtkinter as ctk
 import threading
 from tkinter import Toplevel
+import json
+import os
+from openpyxl import load_workbook
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
 # 변수 정의
 LOGIN_BUTTON_CSS = 'a.top_link[href="/login"]'
+LOGOUT_BUTTON_CSS = 'a.top_link[href="/"]'  # 로그아웃 버튼의 CSS 셀렉터
 SEARCH_RESULT_ITEM_CSS = '.search_result_item'
 QUICK_DELIVERY_TAG_CSS = '.tag.display_tag_item .tag_text'
 PRODUCT_NAME_CSS = '.product_info_product_name .name'
@@ -30,13 +34,31 @@ MODEL_NUM_XPATH = "//div[@class='detail-box']//div[contains(text(), '모델번�
 MORE_BUTTON_CSS = 'a[data-v-420a5cda][data-v-32864b0e].btn.outlinegrey.full.medium'
 TRADE_HISTORY_CSS = '.body_list'
 CLOSE_BUTTON_CSS = '#wrap > div.layout__main--without-search.container.detail.lg > div.content > div.column_bind > div:nth-child(2) > div > div.layer_market_price.layer.lg > div.layer_container > a > svg'
-BUY_BUTTON_XPATH = '/html/body/div/div/div/div[3]/div[1]/div[1]/div[2]/div/div[1]/div[5]/div/button[1]/strong'
-ALT_BUY_BUTTON_CSS = 'button.btn_action .title'
+BUY_BUTTON_CSS = 'button.btn_action .title'
 OPTION_ELEMENTS_CSS = 'div.select_area ul.select_list li.select_item button.select_link.buy'
 ONE_SIZE_CSS = 'button.select_link.buy'
 SIZE_CSS = '.size'
 PRICE_CSS = '.price'
 EXPRESS_CSS = '.ico-express'
+
+COOKIE_FILE = "cookies.json"
+
+
+def save_cookies(driver, filepath):
+    with open(filepath, 'w') as file:
+        json.dump(driver.get_cookies(), file)
+
+
+def load_cookies(driver, filepath):
+    with open(filepath, 'r') as file:
+        cookies = json.load(file)
+        for cookie in cookies:
+            driver.add_cookie(cookie)
+
+
+def delete_cookies(filepath):
+    if os.path.exists(filepath):
+        os.remove(filepath)
 
 
 class ProgressWindow(Toplevel):
@@ -69,9 +91,12 @@ class App(ctk.CTk):
         self.geometry("600x700")  # 초기 윈도우 크기
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(8, weight=1)
+        self.grid_rowconfigure(9, weight=1)
 
         self.create_widgets()
+
+        # UI가 먼저 나오도록 하고, 비동기로 로그인 상태 확인
+        self.after(100, self.check_initial_login_status)
 
     def create_widgets(self):
         # 헤더 라벨
@@ -105,13 +130,18 @@ class App(ctk.CTk):
         self.scrape_button.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
         self.scrape_button.grid_remove()
 
+        # 쿠키 삭제 버튼
+        self.delete_cookies_button = ctk.CTkButton(self, text="로그인 정보 삭제", command=self.delete_cookies)
+        self.delete_cookies_button.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
+        self.delete_cookies_button.grid_remove()
+
         # 상태 메시지
         self.message_label = ctk.CTkLabel(self, text="")
-        self.message_label.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
+        self.message_label.grid(row=8, column=0, padx=20, pady=10, sticky="ew")
 
         # 로그 텍스트 박스
         self.log_text = ctk.CTkTextbox(self, state="disabled")
-        self.log_text.grid(row=8, column=0, padx=20, pady=10, sticky="nsew")
+        self.log_text.grid(row=9, column=0, padx=20, pady=10, sticky="nsew")
 
         self.progress_window = None
 
@@ -151,8 +181,25 @@ class App(ctk.CTk):
 
     def confirm_login(self):
         self.confirm_button.grid_remove()
+        self.login_button.grid_remove()
         self.scrape_button.grid()
+        self.delete_cookies_button.grid()
         self.message_label.configure(text="로그인 확인 완료. 데이터 수집을 시작하세요.")
+
+        # 쿠키 저장
+        self.after_login_save_cookies()
+
+    def after_login_save_cookies(self):
+        self.log("쿠키 정보를 저장합니다.")
+        save_cookies(self.driver, COOKIE_FILE)
+
+    def delete_cookies(self):
+        delete_cookies(COOKIE_FILE)
+        self.log("저장된 쿠키 정보가 삭제되었습니다.")
+        self.scrape_button.grid_remove()
+        self.delete_cookies_button.grid_remove()
+        self.login_button.grid()
+        self.message_label.configure(text="쿠키 정보가 삭제되었습니다. 다시 로그인해주세요.")
 
     def start_scraping(self):
         brand = self.search_entry.get()
@@ -196,6 +243,35 @@ class App(ctk.CTk):
     def update_progress(self, value):
         if self.progress_window:
             self.progress_window.update_progress(value, f"데이터 수집 중... {value:.0%}")
+
+    def check_initial_login_status(self):
+        self.driver = setup_driver(headless=False)
+        self.driver.get("https://kream.co.kr/")
+        if os.path.exists(COOKIE_FILE):
+            self.log("저장된 쿠키 정보를 사용하여 자동 로그인 시도 중...")
+            load_cookies(self.driver, COOKIE_FILE)
+            self.driver.refresh()
+            self.after(3000, self.check_login_status)
+        else:
+            self.log("저장된 쿠키 정보가 없습니다. 수동 로그인이 필요합니다.")
+            self.login_button.grid()
+
+    def check_login_status(self):
+        try:
+            # 로그인된 상태를 확인하기 위해 로그아웃 버튼을 찾습니다.
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, LOGOUT_BUTTON_CSS))
+            )
+            self.log("자동 로그인에 성공했습니다.")
+            self.login_button.grid_remove()
+            self.scrape_button.grid()
+            self.delete_cookies_button.grid()
+        except TimeoutException:
+            self.log("자동 로그인이 실패했습니다. 수동 로그인이 필요합니다.")
+            self.login_button.grid()
+        except Exception as e:
+            self.log(f"로그인 상태 확인 중 오류 발생: {e}")
+            self.login_button.grid()
 
 
 def setup_driver(headless=False):
@@ -315,19 +391,12 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
         try:
             time.sleep(5)
             buy_button = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, BUY_BUTTON_XPATH)))
+                EC.element_to_be_clickable((By.CSS_SELECTOR, BUY_BUTTON_CSS)))
             buy_button.click()
             time.sleep(5)
         except (TimeoutException, NoSuchElementException) as e:
             log_callback("즉시구매 버튼을 클릭하지 못했습니다. 대체 버튼을 시도합니다.")
-            try:
-                alt_buy_button = WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, ALT_BUY_BUTTON_CSS)))
-                alt_buy_button.click()
-                time.sleep(5)
-            except (TimeoutException, NoSuchElementException) as e2:
-                log_callback(f"대체 즉시구매 버튼을 클릭하지 못했습니다: {e2}")
-                raise e2
+            raise e
 
         option_info = []
         option_elements = driver.find_elements(By.CSS_SELECTOR, OPTION_ELEMENTS_CSS)
@@ -443,12 +512,15 @@ def save_to_excel(product_info, filename, log_callback, mode='w'):
 
     df = pd.DataFrame(data, columns=['제품명', '모델번호', '사이즈', '가격', '배송타입'])
 
-    if mode == 'w':
-        df.to_excel(filename, index=False)
-    else:
-        with pd.ExcelWriter(filename, mode='a', if_sheet_exists='overlay') as writer:
-            df.to_excel(writer, index=False, header=writer.sheets['Sheet1'].max_row == 0,
-                        startrow=writer.sheets['Sheet1'].max_row)
+    try:
+        # 엑셀 파일이 이미 존재하는 경우, 기존 파일에 데이터를 추가
+        with pd.ExcelWriter(filename, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+            # 존재하는 시트의 다음 행에 데이터 추가
+            startrow = writer.sheets['Sheet1'].max_row
+            df.to_excel(writer, index=False, header=False, startrow=startrow)
+    except FileNotFoundError:
+        # 엑셀 파일이 존재하지 않는 경우, 새로운 파일 생성
+        df.to_excel(filename, index=False, header=True)
 
     log_callback(f"{product_name} - 데이터가 {filename}에 추가 저장되었습니다.")
 
