@@ -9,19 +9,17 @@ from webdriver_manager.chrome import ChromeDriverManager
 import time
 import urllib.parse
 from datetime import datetime, timedelta
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import customtkinter as ctk
 import threading
-from tkinter import Toplevel
 import json
 import os
-from openpyxl import load_workbook
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("green")
 
 # 변수 정의
-LOGIN_BUTTON_CSS = 'a.top_link[href="/login"]'
+LOGIN_URL = "https://kream.co.kr/login"
 LOGOUT_BUTTON_CSS = 'a.top_link[href="/"]'  # 로그아웃 버튼의 CSS 셀렉터
 SEARCH_RESULT_ITEM_CSS = '.search_result_item'
 QUICK_DELIVERY_TAG_CSS = '.tag.display_tag_item .tag_text'
@@ -42,12 +40,11 @@ PRICE_CSS = '.price'
 EXPRESS_CSS = '.ico-express'
 
 COOKIE_FILE = "cookies.json"
-
+CACHE_FILE = "cache.json"
 
 def save_cookies(driver, filepath):
     with open(filepath, 'w') as file:
         json.dump(driver.get_cookies(), file)
-
 
 def load_cookies(driver, filepath):
     with open(filepath, 'r') as file:
@@ -55,33 +52,23 @@ def load_cookies(driver, filepath):
         for cookie in cookies:
             driver.add_cookie(cookie)
 
-
 def delete_cookies(filepath):
     if os.path.exists(filepath):
         os.remove(filepath)
 
+def save_to_cache(data, filepath):
+    with open(filepath, 'w') as file:
+        json.dump(data, file)
 
-class ProgressWindow(Toplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
+def load_from_cache(filepath):
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as file:
+            return json.load(file)
+    return []
 
-        self.title("진행 상황")
-        self.geometry("300x100")
-
-        self.configure(bg='#2B2B2B')  # 다크모드 배경색 설정
-
-        self.progress_bar = ctk.CTkProgressBar(self, width=250)
-        self.progress_bar.pack(padx=20, pady=20)
-        self.progress_bar.set(0)
-
-        self.status_label = ctk.CTkLabel(self, text="데이터 수집 중...", fg_color='#2B2B2B', text_color='white')
-        self.status_label.pack(padx=20, pady=10)
-
-    def update_progress(self, value, status_text):
-        self.progress_bar.set(value)
-        self.status_label.configure(text=status_text)
-        self.update_idletasks()
-
+def delete_cache(filepath):
+    if os.path.exists(filepath):
+        os.remove(filepath)
 
 class App(ctk.CTk):
     def __init__(self):
@@ -91,7 +78,7 @@ class App(ctk.CTk):
         self.geometry("600x700")  # 초기 윈도우 크기
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(9, weight=1)
+        self.grid_rowconfigure(8, weight=1)
 
         self.create_widgets()
 
@@ -135,13 +122,13 @@ class App(ctk.CTk):
         self.delete_cookies_button.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
         self.delete_cookies_button.grid_remove()
 
-        # 상태 메시지
-        self.message_label = ctk.CTkLabel(self, text="")
-        self.message_label.grid(row=8, column=0, padx=20, pady=10, sticky="ew")
+        # 진행 상황 라벨
+        self.progress_label = ctk.CTkLabel(self, text="진행 상황: 0%", fg_color='#2B2B2B', text_color='white')
+        self.progress_label.grid(row=8, column=0, padx=20, pady=10, sticky="ew")
 
         # 로그 텍스트 박스
         self.log_text = ctk.CTkTextbox(self, state="disabled")
-        self.log_text.grid(row=9, column=0, padx=20, pady=10, sticky="nsew")
+        self.log_text.grid(row=9, column=0, padx=20, pady=(10, 20), sticky="nsew")
 
         self.progress_window = None
 
@@ -151,7 +138,7 @@ class App(ctk.CTk):
     def on_resize(self, event):
         # 창 크기가 변경될 때 로그 텍스트 박스의 크기를 조정
         width = self.winfo_width() - 40  # 좌우 패딩 고려
-        height = self.winfo_height() - 400  # 상단 위젯들의 높이를 고려하여 조정
+        height = self.winfo_height() - 500  # 상단 위젯들의 높이를 고려하여 조정
         self.log_text.configure(width=width, height=height)
 
     def log(self, message):
@@ -163,28 +150,17 @@ class App(ctk.CTk):
         self.update_idletasks()
 
     def login(self):
-        self.driver = setup_driver(headless=False)
-        self.driver.get("https://kream.co.kr/")
-
-        try:
-            login_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, LOGIN_BUTTON_CSS))
-            )
-            login_button.click()
-            self.log("로그인 페이지로 이동했습니다.")
-        except Exception as e:
-            self.log(f"로그인 버튼 클릭 중 오류 발생: {e}")
+        self.driver = setup_driver()
+        self.driver.get(LOGIN_URL)
 
         self.login_button.grid_remove()
         self.confirm_button.grid()
-        self.message_label.configure(text="로그인 완료 후, 확인 버튼을 눌러주세요.")
 
     def confirm_login(self):
         self.confirm_button.grid_remove()
         self.login_button.grid_remove()
         self.scrape_button.grid()
         self.delete_cookies_button.grid()
-        self.message_label.configure(text="로그인 확인 완료. 데이터 수집을 시작하세요.")
 
         # 쿠키 저장
         self.after_login_save_cookies()
@@ -199,7 +175,6 @@ class App(ctk.CTk):
         self.scrape_button.grid_remove()
         self.delete_cookies_button.grid_remove()
         self.login_button.grid()
-        self.message_label.configure(text="쿠키 정보가 삭제되었습니다. 다시 로그인해주세요.")
 
     def start_scraping(self):
         brand = self.search_entry.get()
@@ -215,7 +190,6 @@ class App(ctk.CTk):
             min_trades = int(min_trades)
 
         self.scrape_button.configure(state="disabled")
-        self.progress_window = ProgressWindow(self)
         self.log("데이터 수집을 시작합니다...")
 
         threading.Thread(target=self.scrape_data, args=(brand, period, min_trades)).start()
@@ -226,7 +200,7 @@ class App(ctk.CTk):
         self.driver.quit()
 
         # 새로운 브라우저 설정
-        self.driver = setup_driver(headless=False)
+        self.driver = setup_driver()
 
         # 쿠키와 세션 데이터 설정
         self.driver.get("https://kream.co.kr/")
@@ -234,21 +208,30 @@ class App(ctk.CTk):
             self.driver.add_cookie(cookie)
         self.driver.refresh()
 
-        detailed_products = scrape_data(self.driver, brand, self.update_progress, self.log, period, min_trades)
-        self.progress_window.update_progress(1, "데이터 수집 완료")
+        # 캐시 파일에서 초기 제품 정보 로드
+        initial_products = load_from_cache(CACHE_FILE)
+        if not initial_products:
+            initial_products = scrape_initial_data(self.driver, brand, self.update_progress, self.log)
+            save_to_cache(initial_products, CACHE_FILE)
+
+        detailed_products = scrape_detailed_data(self.driver, initial_products, self.update_progress, self.log, brand, period, min_trades)
+        self.update_progress(1)
         self.log(f"데이터 수집 완료. {brand}_detailed_products.xlsx 파일이 저장되었습니다.")
         self.scrape_button.configure(state="normal")
-        self.progress_window.after(3000, self.progress_window.destroy)  # 3초 후 진행 창 닫기
+
+        # 캐시 파일 삭제
+        delete_cache(CACHE_FILE)
 
     def update_progress(self, value):
-        if self.progress_window:
-            self.progress_window.update_progress(value, f"데이터 수집 중... {value:.0%}")
+        progress_percent = int(value * 100)
+        self.progress_label.configure(text=f"진행 상황: {progress_percent}%")
+        self.progress_label.update_idletasks()
 
     def check_initial_login_status(self):
-        self.driver = setup_driver(headless=False)
-        self.driver.get("https://kream.co.kr/")
         if os.path.exists(COOKIE_FILE):
+            self.driver = setup_driver()
             self.log("저장된 쿠키 정보를 사용하여 자동 로그인 시도 중...")
+            self.driver.get("https://kream.co.kr/")
             load_cookies(self.driver, COOKIE_FILE)
             self.driver.refresh()
             self.after(3000, self.check_login_status)
@@ -266,6 +249,7 @@ class App(ctk.CTk):
             self.login_button.grid_remove()
             self.scrape_button.grid()
             self.delete_cookies_button.grid()
+            self.start_scraping()  # 자동 로그인 후 바로 스크래핑 시작
         except TimeoutException:
             self.log("자동 로그인이 실패했습니다. 수동 로그인이 필요합니다.")
             self.login_button.grid()
@@ -273,15 +257,11 @@ class App(ctk.CTk):
             self.log(f"로그인 상태 확인 중 오류 발생: {e}")
             self.login_button.grid()
 
-
-def setup_driver(headless=False):
+def setup_driver():
     options = Options()
     options.add_experimental_option("excludeSwitches", ["enable-logging", "enable-automation"])
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument('--disable-infobars')
-    if headless:
-        options.add_argument('--headless')
-        options.add_argument('--disable-gpu')
     options.add_argument('--start-maximized')
     options.add_argument('--log-level=3')
     options.add_argument('--silent')
@@ -289,7 +269,6 @@ def setup_driver(headless=False):
         'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
-
 
 def get_initial_product_info(card):
     product_info = {}
@@ -313,7 +292,6 @@ def get_initial_product_info(card):
         product_info['URL'] = "N/A"
 
     return product_info
-
 
 def get_detailed_product_info(driver, url, log_callback, brand, period, min_trades):
     driver.get(url)
@@ -407,7 +385,7 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
                 price = one_size_element.find_element(By.CSS_SELECTOR, PRICE_CSS).text.strip()
                 is_express = bool(one_size_element.find_elements(By.CSS_SELECTOR, EXPRESS_CSS))
                 option_info.append({
-                    '사이즈': size,
+                    '옵션(사이즈)': size,
                     '가격': price,
                     '빠른배송': is_express
                 })
@@ -420,7 +398,7 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
                     price = option.find_element(By.CSS_SELECTOR, PRICE_CSS).text.strip()
                     is_express = bool(option.find_elements(By.CSS_SELECTOR, EXPRESS_CSS))
                     option_info.append({
-                        '사이즈': size,
+                        '옵션(사이즈)': size,
                         '가격': price,
                         '빠른배송': is_express
                     })
@@ -431,16 +409,19 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
         # 수집한 제품 정보를 즉시 엑셀에 저장
         save_to_excel(product_info, f"{brand}_detailed_products.xlsx", log_callback, mode='a')
 
+        # UI 로그에 정보 출력
+        for option in option_info:
+            log_callback(
+                f"제품명: {product_name}, 모델번호: {model_num}, 옵션(사이즈): {option['옵션(사이즈)']}, 가격: {option['가격']}, 배송타입: {'빠른배송' if option['빠른배송'] else '일반배송'}")
+
     except (TimeoutException, NoSuchElementException) as e:
         log_callback(f"구매 정보를 찾을 수 없습니다: {e}")
         return None
 
     return product_info
 
-
-def scrape_data(driver, brand, progress_callback, log_callback, period, min_trades):
+def scrape_initial_data(driver, brand, progress_callback, log_callback):
     initial_products = []
-    detailed_products = []
     try:
         encoded_keyword = urllib.parse.quote(brand)
         url = f"https://kream.co.kr/search?keyword={encoded_keyword}&tab=products"
@@ -480,37 +461,39 @@ def scrape_data(driver, brand, progress_callback, log_callback, period, min_trad
 
         log_callback(f"빠른배송 가능한 제품 {len(initial_products)}개를 찾았습니다.")
 
-        total_products = len(initial_products)
-        for i, product in enumerate(initial_products):
-            log_callback(f"제품 정보 수집 중: {product['품번']} ({i + 1}/{total_products})")
-            detailed_info = get_detailed_product_info(driver, product['URL'], log_callback, brand, period, min_trades)
-            if detailed_info:
-                detailed_products.append(detailed_info)
-                log_callback(f"상세 정보 수집 완료: {detailed_info['모델번호']}")
-            else:
-                log_callback(f"{product['품번']}에 대한 상세 정보를 수집하지 못했습니다. 다음 품번으로 넘어갑니다.")
-            progress = (i + 1) / total_products
-            progress_callback(progress)
-
-        log_callback(f"총 {len(detailed_products)}개의 조건에 맞는 제품을 찾았습니다.")
-
     except Exception as e:
         log_callback(f"오류 발생: {str(e)}")
 
-    return detailed_products
+    return initial_products
 
+def scrape_detailed_data(driver, initial_products, progress_callback, log_callback, brand, period, min_trades):
+    detailed_products = []
+    total_products = len(initial_products)
+    for i, product in enumerate(initial_products):
+        log_callback(f"제품 정보 수집 중: {product['품번']} ({i + 1}/{total_products})")
+        detailed_info = get_detailed_product_info(driver, product['URL'], log_callback, brand, period, min_trades)
+        if detailed_info:
+            detailed_products.append(detailed_info)
+            log_callback(f"상세 정보 수집 완료: {detailed_info['모델번호']}")
+        else:
+            log_callback(f"{product['품번']}에 대한 상세 정보를 수집하지 못했습니다. 다음 품번으로 넘어갑니다.")
+        progress = (i + 1) / total_products
+        progress_callback(progress)
+
+    log_callback(f"총 {len(detailed_products)}개의 조건에 맞는 제품을 찾았습니다.")
+    return detailed_products
 
 def save_to_excel(product_info, filename, log_callback, mode='w'):
     data = []
     product_name = product_info['제품명']
     model_num = product_info['모델번호']
     for option in product_info['옵션']:
-        size = option['사이즈']
+        size = option['옵션(사이즈)']
         price = option['가격']
         is_express = "빠른배송" if option['빠른배송'] else "일반배송"
         data.append([product_name, model_num, size, price, is_express])
 
-    df = pd.DataFrame(data, columns=['제품명', '모델번호', '사이즈', '가격', '배송타입'])
+    df = pd.DataFrame(data, columns=['제품명', '모델번호', '옵션(사이즈)', '가격', '배송타입'])
 
     try:
         # 엑셀 파일이 이미 존재하는 경우, 기존 파일에 데이터를 추가
@@ -523,7 +506,6 @@ def save_to_excel(product_info, filename, log_callback, mode='w'):
         df.to_excel(filename, index=False, header=True)
 
     log_callback(f"{product_name} - 데이터가 {filename}에 추가 저장되었습니다.")
-
 
 if __name__ == "__main__":
     app = App()
