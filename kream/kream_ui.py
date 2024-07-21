@@ -43,9 +43,15 @@ COOKIE_FILE = "cookies.json"
 CACHE_FILE = "cache.json"
 CACHE_VALIDITY_DAYS = 1  # 캐시 파일의 유효 기간을 1일로 설정
 
+
 def save_cookies(driver, filepath):
+    cookies = driver.get_cookies()
+    for cookie in cookies:
+        if 'expiry' not in cookie:
+            cookie['expiry'] = int(time.time()) + 31536000  # 1년 후
     with open(filepath, 'w') as file:
-        json.dump(driver.get_cookies(), file)
+        json.dump(cookies, file)
+
 
 def load_cookies(driver, filepath):
     with open(filepath, 'r') as file:
@@ -53,13 +59,19 @@ def load_cookies(driver, filepath):
         for cookie in cookies:
             driver.add_cookie(cookie)
 
+
 def delete_cookies(filepath):
     if os.path.exists(filepath):
         os.remove(filepath)
 
+
 def save_to_cache(data, filepath):
+    if os.path.exists(filepath):
+        existing_data = load_from_cache(filepath)
+        data = existing_data + data
     with open(filepath, 'w') as file:
         json.dump(data, file)
+
 
 def load_from_cache(filepath):
     if os.path.exists(filepath):
@@ -67,9 +79,11 @@ def load_from_cache(filepath):
             return json.load(file)
     return []
 
+
 def delete_cache(filepath):
     if os.path.exists(filepath):
         os.remove(filepath)
+
 
 def is_cache_valid(filepath, validity_days):
     if os.path.exists(filepath):
@@ -77,6 +91,7 @@ def is_cache_valid(filepath, validity_days):
         if (datetime.now() - file_time).days < validity_days:
             return True
     return False
+
 
 class App(ctk.CTk):
     def __init__(self):
@@ -121,28 +136,32 @@ class App(ctk.CTk):
         self.scrape_button.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
         self.scrape_button.grid_remove()
 
+        # 캐시 초기화 버튼
+        self.clear_cache_button = ctk.CTkButton(self, text="캐시 초기화", command=self.clear_cache)
+        self.clear_cache_button.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
+        self.clear_cache_button.grid_remove()
+
         # 쿠키 삭제 버튼
         self.delete_cookies_button = ctk.CTkButton(self, text="로그인 정보 삭제", command=self.delete_cookies)
-        self.delete_cookies_button.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
+        self.delete_cookies_button.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
         self.delete_cookies_button.grid_remove()
 
         # 진행 상황 라벨
         self.progress_label = ctk.CTkLabel(self, text="진행 상황: 0%", fg_color='#1E1E1E', corner_radius=8)
-        self.progress_label.grid(row=7, column=0, padx=20, pady=(10, 5), sticky="ew")
+        self.progress_label.grid(row=8, column=0, padx=20, pady=(10, 5), sticky="ew")
 
         # 로그 텍스트 박스
         self.log_text = ctk.CTkTextbox(self, state="disabled", fg_color='#2B2B2B', corner_radius=8)
-        self.log_text.grid(row=8, column=0, padx=20, pady=(5, 20), sticky="nsew")
+        self.log_text.grid(row=9, column=0, padx=20, pady=(5, 20), sticky="nsew")
 
         # 로그 텍스트 박스의 높이를 조정
-        self.grid_rowconfigure(8, weight=1)  # 로그 텍스트 박스가 확장되도록 설정
+        self.grid_rowconfigure(9, weight=1)  # 로그 텍스트 박스가 확장되도록 설정
 
         self.progress_window = None
 
         # 창 크기 조정 이벤트 바인딩
         self.bind("<Configure>", self.on_resize)
 
-    # 창 크기 조정 함수 수정
     def on_resize(self, event):
         width = self.winfo_width() - 40  # 좌우 패딩 고려
         height = max(100, self.winfo_height() - 400)  # 최소 높이 100px, 상단 위젯들의 높이를 고려하여 조정
@@ -161,6 +180,7 @@ class App(ctk.CTk):
     def confirm_login(self):
         self.confirm_button.grid_remove()
         self.scrape_button.grid()
+        self.clear_cache_button.grid()
         self.delete_cookies_button.grid()
 
         # 쿠키 저장
@@ -174,8 +194,13 @@ class App(ctk.CTk):
         delete_cookies(COOKIE_FILE)
         self.log("저장된 쿠키 정보가 삭제되었습니다.")
         self.scrape_button.grid_remove()
+        self.clear_cache_button.grid_remove()
         self.delete_cookies_button.grid_remove()
         self.confirm_button.grid()
+
+    def clear_cache(self):
+        delete_cache(CACHE_FILE)
+        self.log("캐시 파일이 초기화되었습니다.")
 
     def start_scraping(self):
         brand = self.search_entry.get()
@@ -193,23 +218,14 @@ class App(ctk.CTk):
         self.scrape_button.configure(state="disabled")
         self.log("데이터 수집을 시작합니다...")
 
+        # 새로운 브라우저 설정을 제거하고, 이미 설정된 브라우저를 재사용하도록 변경
+        if not hasattr(self, 'driver') or self.driver is None:
+            self.driver = setup_driver()
+
         threading.Thread(target=self.scrape_data, args=(brand, period, min_trades)).start()
 
     def scrape_data(self, brand, period, min_trades):
         try:
-            # 현재 세션의 쿠키와 세션 데이터 가져오기
-            cookies = self.driver.get_cookies()
-            self.driver.quit()
-
-            # 새로운 브라우저 설정
-            self.driver = setup_driver()
-
-            # 쿠키와 세션 데이터 설정
-            self.driver.get("https://kream.co.kr/")
-            for cookie in cookies:
-                self.driver.add_cookie(cookie)
-            self.driver.refresh()
-
             # 캐시 파일의 유효성을 확인
             if is_cache_valid(CACHE_FILE, CACHE_VALIDITY_DAYS):
                 initial_products = load_from_cache(CACHE_FILE)
@@ -222,11 +238,13 @@ class App(ctk.CTk):
             detailed_products = self.scrape_detailed_data(initial_products, brand, period, min_trades)
             self.update_progress(1)
             self.log(f"데이터 수집 완료. {brand}_detailed_products.xlsx 파일이 저장되었습니다.")
+            delete_cache(CACHE_FILE)  # 엑셀 저장 완료 후 캐시 파일 초기화
+            self.log("캐시 파일이 초기화되었습니다.")
         except Exception as e:
             self.log(f"스크래핑 중 오류 발생: {e}")
         finally:
             self.scrape_button.configure(state="normal")
-            self.driver.quit()
+            # driver.quit() 호출을 제거하여 브라우저를 닫지 않음
 
     def update_progress(self, value):
         progress_percent = int(value * 100)
@@ -238,9 +256,15 @@ class App(ctk.CTk):
             self.driver = setup_driver()
             self.log("저장된 쿠키 정보를 사용하여 자동 로그인 시도 중...")
             self.driver.get("https://kream.co.kr/")
-            load_cookies(self.driver, COOKIE_FILE)
-            self.driver.refresh()
-            self.after(3000, self.check_login_status)
+            try:
+                load_cookies(self.driver, COOKIE_FILE)
+                self.driver.refresh()
+                self.after(3000, self.check_login_status)
+            except Exception:
+                self.log("쿠키 파일이 유효하지 않습니다. 쿠키 파일을 초기화하고 다시 로그인합니다.")
+                delete_cookies(COOKIE_FILE)
+                self.driver.get(LOGIN_URL)
+                self.confirm_button.grid()
         else:
             self.log("저장된 쿠키 정보가 없습니다. 수동 로그인이 필요합니다.")
             self.driver = setup_driver()
@@ -255,10 +279,11 @@ class App(ctk.CTk):
             )
             self.log("자동 로그인에 성공했습니다.")
             self.scrape_button.grid()
+            self.clear_cache_button.grid()
             self.delete_cookies_button.grid()
         except TimeoutException:
             self.log("자동 로그인이 실패했습니다. 수동 로그인이 필요합니다.")
-            self.driver.get(LOGIN_URL)
+            self.driver.get(LOG인_URL)
             self.confirm_button.grid()
         except Exception as e:
             self.log(f"로그인 상태 확인 중 오류 발생: {e}")
@@ -273,7 +298,8 @@ class App(ctk.CTk):
             self.driver.get(url)
             self.log(f"'{brand}' 검색 결과 페이지로 이동했습니다.")
 
-            WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, SEARCH_RESULT_ITEM_CSS)))
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, SEARCH_RESULT_ITEM_CSS)))
 
             scroll_pause_time = 1
             scroll_height = 500
@@ -285,24 +311,30 @@ class App(ctk.CTk):
                 time.sleep(scroll_pause_time)
                 new_height = self.driver.execute_script("return document.body.scrollHeight")
 
+                # 스크롤이 멈추지 않았는지 확인
                 if new_height == last_height:
-                    if time.time() - start_time > 60:  # 1분 동안 새로운 제품이 로드되지 않으면 스크롤 중단
+                    if time.time() - start_time > 500:  # 1분 동안 새로운 제품이 로드되지 않으면 스크롤 중단
                         self.log("1분 동안 새로운 제품이 로드되지 않았습니다. 스크롤을 중단합니다.")
                         break
                 else:
                     start_time = time.time()  # 새로운 제품이 로드되면 시간 초기화
+                    last_height = new_height
 
-                last_height = new_height
+                product_cards = self.driver.find_elements(By.CSS_SELECTOR, SEARCH_RESULT_ITEM_CSS)
+                existing_product_urls = [product['URL'] for product in initial_products]  # 이미 수집된 제품 URL 목록
+                for card in product_cards:
+                    product_info = get_initial_product_info(card)
+                    if product_info and product_info['URL'] not in existing_product_urls:
+                        initial_products.append(product_info)
+                        # 각 제품 정보를 캐시에 저장
+                        save_to_cache(initial_products, CACHE_FILE)
 
-            self.log("페이지 스크롤 완료")
+                self.log(f"현재까지 수집된 제품 수: {len(initial_products)}")
+                self.update_progress(len(initial_products) / 1000)  # 예시로 최대 1000개의 제품 수집 목표
 
-            product_cards = self.driver.find_elements(By.CSS_SELECTOR, SEARCH_RESULT_ITEM_CSS)
-            self.log(f"총 {len(product_cards)}개의 제품을 찾았습니다.")
-
-            for card in product_cards:
-                product_info = get_initial_product_info(card)
-                if product_info:
-                    initial_products.append(product_info)
+                # 추가로 로드할 제품이 없으면 중단
+                if len(product_cards) == 0:
+                    break
 
             self.log(f"빠른배송 가능한 제품 {len(initial_products)}개를 찾았습니다.")
 
@@ -320,16 +352,15 @@ class App(ctk.CTk):
             if detailed_info:
                 detailed_products.append(detailed_info)
                 self.log(f"상세 정보 수집 완료: {detailed_info['모델번호']}")
+                save_to_excel(detailed_info, f"{brand}_detailed_products.xlsx", self.log, mode='a')
             else:
                 self.log(f"{product['품번']}에 대한 상세 정보를 수집하지 못했습니다. 다음 품번으로 넘어갑니다.")
             progress = (i + 1) / total_products
             self.update_progress(progress)
-            # 데이터가 많을 경우 메모리 이슈를 방지하기 위해 주기적으로 데이터를 파일에 저장
-            if i % 50 == 0:
-                save_to_excel(detailed_info, f"{brand}_detailed_products.xlsx", self.log, mode='a')
 
         self.log(f"총 {len(detailed_products)}개의 조건에 맞는 제품을 찾았습니다.")
         return detailed_products
+
 
 def setup_driver():
     options = Options()
@@ -343,6 +374,7 @@ def setup_driver():
         'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3')
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=options)
+
 
 def get_initial_product_info(card):
     product_info = {}
@@ -367,6 +399,7 @@ def get_initial_product_info(card):
 
     return product_info
 
+
 def get_detailed_product_info(driver, url, log_callback, brand, period, min_trades):
     driver.get(url)
     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, DETAIL_BOX_CSS)))
@@ -374,9 +407,11 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
     try:
         title = driver.find_element(By.CSS_SELECTOR, TITLE_CSS).text.strip()
         subtitle = driver.find_element(By.CSS_SELECTOR, SUBTITLE_CSS).text.strip()
-        product_name = f"{title} / {subtitle}"
+        product_name_eng = title
+        product_name_kor = subtitle
     except NoSuchElementException:
-        product_name = "N/A"
+        product_name_eng = "N/A"
+        product_name_kor = "N/A"
         log_callback("제품명을 찾을 수 없습니다.")
 
     try:
@@ -424,7 +459,7 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
         log_callback(f"최근 {period} 내 거래 내역이 {min_trades}개 미만입니다. (현재: {len(recent_trades)}개)")
         return None
 
-    product_info = {'제품명': product_name, '모델번호': model_num}
+    product_info = {'제품명(영문)': product_name_eng, '제품명(한글)': product_name_kor, '모델번호': model_num}
 
     try:
         time.sleep(5)
@@ -480,13 +515,6 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
                     continue
 
         product_info['옵션'] = option_info
-        # 수집한 제품 정보를 즉시 엑셀에 저장
-        save_to_excel(product_info, f"{brand}_detailed_products.xlsx", log_callback, mode='a')
-
-        # UI 로그에 정보 출력
-        for option in option_info:
-            log_callback(
-                f"제품명: {product_name}, 모델번호: {model_num}, 옵션(사이즈): {option['옵션(사이즈)']}, 가격: {option['가격']}, 배송타입: {'빠른배송' if option['빠른배송'] else '일반배송'}")
 
     except (TimeoutException, NoSuchElementException) as e:
         log_callback(f"구매 정보를 찾을 수 없습니다: {e}")
@@ -494,17 +522,19 @@ def get_detailed_product_info(driver, url, log_callback, brand, period, min_trad
 
     return product_info
 
+
 def save_to_excel(product_info, filename, log_callback, mode='w'):
     data = []
-    product_name = product_info['제품명']
+    product_name_eng = product_info['제품명(영문)']
+    product_name_kor = product_info['제품명(한글)']
     model_num = product_info['모델번호']
     for option in product_info['옵션']:
         size = option['옵션(사이즈)']
         price = option['가격']
         is_express = "빠른배송" if option['빠른배송'] else "일반배송"
-        data.append([product_name, model_num, size, price, is_express])
+        data.append([product_name_eng, product_name_kor, model_num, size, price, is_express])
 
-    df = pd.DataFrame(data, columns=['제품명', '모델번호', '옵션(사이즈)', '가격', '배송타입'])
+    df = pd.DataFrame(data, columns=['제품명(영문)', '제품명(한글)', '모델번호', '옵션(사이즈)', '가격', '배송타입'])
 
     try:
         # 엑셀 파일이 이미 존재하는 경우, 기존 파일에 데이터를 추가
@@ -516,7 +546,8 @@ def save_to_excel(product_info, filename, log_callback, mode='w'):
         # 엑셀 파일이 존재하지 않는 경우, 새로운 파일 생성
         df.to_excel(filename, index=False, header=True)
 
-    log_callback(f"{product_name} - 데이터가 {filename}에 추가 저장되었습니다.")
+    log_callback(f"{product_name_eng} - 데이터가 {filename}에 추가 저장되었습니다.")
+
 
 if __name__ == "__main__":
     app = App()
