@@ -101,7 +101,7 @@ class App(ctk.CTk):
         self.geometry("600x700")  # 초기 윈도우 크기
 
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(8, weight=1)
+        self.grid_rowconfigure(12, weight=1)
 
         self.create_widgets()
 
@@ -117,45 +117,58 @@ class App(ctk.CTk):
         self.search_entry = ctk.CTkEntry(self, placeholder_text="검색어 입력")
         self.search_entry.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
 
+        # 검색어 추가 버튼
+        self.add_button = ctk.CTkButton(self, text="추가", command=self.add_term)
+        self.add_button.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+
+        # 검색어 리스트박스
+        self.search_listbox = ctk.CTkTextbox(self, state="normal")
+        self.search_listbox.grid(row=3, column=0, padx=20, pady=10, sticky="nsew")
+        self.search_listbox.bind("<ButtonRelease-1>", self.select_term)
+
+        # 검색어 삭제 버튼
+        self.delete_button = ctk.CTkButton(self, text="삭제", command=self.delete_term)
+        self.delete_button.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+
         # 스크래핑 기간 옵션
         self.period_var = ctk.StringVar(value="월")
         self.period_option = ctk.CTkOptionMenu(self, values=["일", "주", "월", "년"], variable=self.period_var)
-        self.period_option.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.period_option.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
 
         # 최소 거래 횟수 입력
         self.min_trades_entry = ctk.CTkEntry(self, placeholder_text="최소 거래 횟수 (기본값: 30)")
-        self.min_trades_entry.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.min_trades_entry.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
 
-        # 확인 버튼
-        self.confirm_button = ctk.CTkButton(self, text="확인", command=self.confirm_login)
-        self.confirm_button.grid(row=4, column=0, padx=20, pady=10, sticky="ew")
+        # 확인 버튼 (로그인 정보 저장 버튼)
+        self.confirm_button = ctk.CTkButton(self, text="로그인 정보 저장", command=self.confirm_login)
+        self.confirm_button.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
         self.confirm_button.grid_remove()
 
         # 데이터 수집 버튼
         self.scrape_button = ctk.CTkButton(self, text="데이터 수집", command=self.start_scraping)
-        self.scrape_button.grid(row=5, column=0, padx=20, pady=10, sticky="ew")
+        self.scrape_button.grid(row=8, column=0, padx=20, pady=10, sticky="ew")
         self.scrape_button.grid_remove()
 
         # 캐시 초기화 버튼
         self.clear_cache_button = ctk.CTkButton(self, text="캐시 초기화", command=self.clear_cache)
-        self.clear_cache_button.grid(row=6, column=0, padx=20, pady=10, sticky="ew")
+        self.clear_cache_button.grid(row=9, column=0, padx=20, pady=10, sticky="ew")
         self.clear_cache_button.grid_remove()
 
         # 쿠키 삭제 버튼
         self.delete_cookies_button = ctk.CTkButton(self, text="로그인 정보 삭제", command=self.delete_cookies)
-        self.delete_cookies_button.grid(row=7, column=0, padx=20, pady=10, sticky="ew")
+        self.delete_cookies_button.grid(row=10, column=0, padx=20, pady=10, sticky="ew")
         self.delete_cookies_button.grid_remove()
 
         # 진행 상황 라벨
         self.progress_label = ctk.CTkLabel(self, text="진행 상황: 0%", fg_color='#1E1E1E', corner_radius=8)
-        self.progress_label.grid(row=8, column=0, padx=20, pady=(10, 5), sticky="ew")
+        self.progress_label.grid(row=11, column=0, padx=20, pady=(10, 5), sticky="ew")
 
         # 로그 텍스트 박스
         self.log_text = ctk.CTkTextbox(self, state="disabled", fg_color='#2B2B2B', corner_radius=8)
-        self.log_text.grid(row=9, column=0, padx=20, pady=(5, 20), sticky="nsew")
+        self.log_text.grid(row=12, column=0, padx=20, pady=(5, 20), sticky="nsew")
 
         # 로그 텍스트 박스의 높이를 조정
-        self.grid_rowconfigure(9, weight=1)  # 로그 텍스트 박스가 확장되도록 설정
+        self.grid_rowconfigure(12, weight=1)  # 로그 텍스트 박스가 확장되도록 설정
 
         self.progress_window = None
 
@@ -176,6 +189,28 @@ class App(ctk.CTk):
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
         self.update_idletasks()
+
+    def add_term(self):
+        term = self.search_entry.get()
+        if term:
+            self.search_listbox.insert("end", term + "\n")
+            self.search_entry.delete(0, 'end')
+
+    def delete_term(self):
+        selected_text = self.search_listbox.get("sel.first", "sel.last")
+        if selected_text:
+            content = self.search_listbox.get("1.0", "end").strip().split('\n')
+            if selected_text in content:
+                content.remove(selected_text)
+                self.search_listbox.delete("1.0", "end")
+                for line in content:
+                    self.search_listbox.insert("end", line + "\n")
+
+    def select_term(self, event):
+        self.search_listbox.tag_remove("selected", "1.0", "end")
+        if self.search_listbox.tag_ranges("sel"):
+            self.search_listbox.tag_add("selected", "sel.first", "sel.last")
+        self.search_listbox.tag_config("selected", background="yellow")
 
     def confirm_login(self):
         self.confirm_button.grid_remove()
@@ -203,9 +238,9 @@ class App(ctk.CTk):
         self.log("캐시 파일이 초기화되었습니다.")
 
     def start_scraping(self):
-        brand = self.search_entry.get()
-        if not brand:
-            self.log("검색어를 입력해주세요.")
+        terms = self.search_listbox.get("1.0", "end").strip().split('\n')
+        if not terms:
+            self.log("검색어를 추가해주세요.")
             return
 
         period = self.period_var.get()
@@ -218,15 +253,19 @@ class App(ctk.CTk):
         self.scrape_button.configure(state="disabled")
         self.log("데이터 수집을 시작합니다...")
 
-        # 새로운 브라우저 설정을 제거하고, 이미 설정된 브라우저를 재사용하도록 변경
         if not hasattr(self, 'driver') or self.driver is None:
             self.driver = setup_driver()
 
-        threading.Thread(target=self.scrape_data, args=(brand, period, min_trades)).start()
+        threading.Thread(target=self.scrape_all_data, args=(terms, period, min_trades)).start()
+
+    def scrape_all_data(self, terms, period, min_trades):
+        for term in terms:
+            self.check_login_status()  # 각 검색어 처리 전에 로그인 세션 확인
+            self.scrape_data(term, period, min_trades)
+            delete_cache(CACHE_FILE)  # 각 검색어 처리 후 캐시 파일 초기화
 
     def scrape_data(self, brand, period, min_trades):
         try:
-            # 캐시 파일의 유효성을 확인
             if is_cache_valid(CACHE_FILE, CACHE_VALIDITY_DAYS):
                 initial_products = load_from_cache(CACHE_FILE)
                 self.log("캐시 파일을 로드했습니다.")
@@ -238,13 +277,10 @@ class App(ctk.CTk):
             detailed_products = self.scrape_detailed_data(initial_products, brand, period, min_trades)
             self.update_progress(1)
             self.log(f"데이터 수집 완료. {brand}_detailed_products.xlsx 파일이 저장되었습니다.")
-            delete_cache(CACHE_FILE)  # 엑셀 저장 완료 후 캐시 파일 초기화
-            self.log("캐시 파일이 초기화되었습니다.")
         except Exception as e:
             self.log(f"스크래핑 중 오류 발생: {e}")
         finally:
             self.scrape_button.configure(state="normal")
-            # driver.quit() 호출을 제거하여 브라우저를 닫지 않음
 
     def update_progress(self, value):
         progress_percent = int(value * 100)
@@ -273,17 +309,17 @@ class App(ctk.CTk):
 
     def check_login_status(self):
         try:
-            # 로그인된 상태를 확인하기 위해 로그아웃 버튼을 찾습니다.
             WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, LOGOUT_BUTTON_CSS))
             )
             self.log("자동 로그인에 성공했습니다.")
-            self.scrape_button.grid()
+            self.confirm_button.grid_remove()  # 로그인 후 확인 버튼 숨기기
+            self.scrape_button.grid()  # 로그인 후 데이터 수집 버튼 표시
             self.clear_cache_button.grid()
             self.delete_cookies_button.grid()
         except TimeoutException:
             self.log("자동 로그인이 실패했습니다. 수동 로그인이 필요합니다.")
-            self.driver.get(LOG인_URL)
+            self.driver.get(LOGIN_URL)
             self.confirm_button.grid()
         except Exception as e:
             self.log(f"로그인 상태 확인 중 오류 발생: {e}")
@@ -313,8 +349,8 @@ class App(ctk.CTk):
 
                 # 스크롤이 멈추지 않았는지 확인
                 if new_height == last_height:
-                    if time.time() - start_time > 500:  # 1분 동안 새로운 제품이 로드되지 않으면 스크롤 중단
-                        self.log("1분 동안 새로운 제품이 로드되지 않았습니다. 스크롤을 중단합니다.")
+                    if time.time() - start_time > 300:  # 5분 동안 새로운 제품이 로드되지 않으면 스크롤 중단
+                        self.log("5분 동안 새로운 제품이 로드되지 않았습니다. 스크롤을 중단합니다.")
                         break
                 else:
                     start_time = time.time()  # 새로운 제품이 로드되면 시간 초기화
