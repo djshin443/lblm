@@ -1,61 +1,178 @@
 import requests
 import json
 import tkinter as tk
-from tkinter import scrolledtext
+from tkinter import scrolledtext, messagebox
 from threading import Thread
 from datetime import datetime
 import time
 import schedule
+import random
 
-# Move the SKU ID conversion inside the function to avoid global variable
+
 def get_stores(textbox):
     skuId = input_entry.get().upper()  # Convert SKU ID to uppercase
+    if not skuId:
+        messagebox.showwarning("Warning", "Please enter a SKU ID")
+        return
+
+    # Update status
+    status_label.config(text="Checking stores...")
+    root.update_idletasks()
+
     url = 'https://api.louisvuitton.com/eco-eu/search-merch-eapi/v1/kor-kr/stores/query'
+
+    # Chrome-like headers with all required fields
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
         'Content-Type': 'application/json',
         'Accept': 'application/json, text/plain, */*',
         'client_secret': '60bbcdcD722D411B88cBb72C8246a22F',
         'client_id': '607e3016889f431fb8020693311016c9',
         'Origin': 'https://kr.louisvuitton.com',
-        'Referer': 'https://kr.louisvuitton.com/kor-kr/products/puzzle-flower-monogram-keyring-s00-nvprod4170081v/M01207',
+        'Referer': 'https://kr.louisvuitton.com/kor-kr/products/pochette-voyage-souple-monogram-other-nvprod6210015v/M13962',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Cookie': 'ATG_SESSION_ID=E4i7k6N4uqdHA3we5jdEXtRl.front131-prd; ATGID=anonymous; anonymous_session=true; _dynSessConf=8923089313706214252; JSESSIONID=E4i7k6N4uqdHA3we5jdEXtRl.front131-prd; SGID=sb.springboot131-prd; bm_sz=C3631D7AA73F951FA5D4AD28574EDBAE~YAAQzTVDF/efuJ+IAQAAvrCnrhQzSqHopKHCkEzH4CDBpVSjt2CdcrK7xKD4Ur9r2WMDl2abOsq90ekwmhfXa7QEKxaH1Mk+tSyR4CGeG4q4OCSHFDM9pFimOHLrKfn5EA4a3tCLGxLgLpHfAfL739DE+UQnjZhg69ZeUaZzpRDauJvEKVUVGz6EGAUKGSmW5dSBtI4CCE+p42IFeiRRd/BI0wsYOdwZksOa0NYERiZ6T5u/Rru2R1t6RtpgvIqHB7ByYZsT7fFJJoNVgmWEvWJI24G6lg8qooPgIyXB2P9hGq/FvRsd170=~3552308~3556914; AKA_A2=A; OPTOUTMULTI=0:0%7Cc1:0%7Cc2:0%7Cc4:0%7Cc3:0; lv-dispatch=kor-kr; lv-dispatch-url=https://kr.louisvuitton.com/kor-kr/products/puzzle-flower-monogram-keyring-s00-nvprod4170081v/M01207; ak_cc=KR; ak_bmsc=2F6DAD582D758BD2C3313B28ECC46CCB~000000000000000000000000000000~YAAQzTVDF9OguJ+IAQAA5rWnrhQ3hb2TxLVo5Ex8aajU2QlZT0aikdEl2ssz2cFI0nmQ/GxtYrC3mQocuAQcOCenI5fdJGx8nlN+TdxWnwr/wYMqkV88UK8+gkHKRkw3HdCs7CutvEHjB8w/PdRr+UnXY0qqzsg+nlFxn7n3arUqMiiuP34Cx8+enjzQYWnz0mbqMJFJXJsy+Qc2EmrNuLHj75DEvsNsWwM9Zluteq80yFHayEf6g6C7F/+z2iQZSy92xgotTC2+OA31Iloncux93WZbgRuUHwVWVPyUV0yg2xhBXogJdYY6Ou2TX/l6eftOFnyJzM4Yo0L3adcFohgE9dnTsRY52jHsnSdsYkhVoMJJ6K4UH/uxIUq9lubHZ+iQ3KrNohQN8dk+VIZYQPi40wOo0cu179k3fAB8zxEi7XgzxA5p/66UW6BmA1XtQR3e5dslAddoTp4vZbQ5vRG4hr8SSrtmuCseU97ONf2f; RT="z=1&dm=louisvuitton.com&si=66447985-e7aa-49f7-a5dc-104845852594&ss=liskqdmw&sl=0&tt=0&bcn=%2F%2F684d0d4b.akstat.io%2F"; _cs_mk=0.926590451296496_1686557407779; _fbp=fb.1.1686557408151.960999036; _scid=196b6e5d-818b-4da9-89b4-b5afe7433432; _scid_r=196b6e5d-818b-4da9-89b4-b5afe7433432; _tt_enable_cookie=1; _ttp=i9BoCdSWrv1ulrGKB-ATML_cHrj; _qubitTracker=gkuisyi8co8-0liskqi6w-69tgrt8; qb_generic=:Yiup8Lm:.louisvuitton.com; _gid=GA1.2.1423735359.1686557411; _ga=GA1.1.795833456.1686557411; _gcl_au=1.1.722436059.1686557411; _abck=49A08A3DFA90539A85752575479FAB37~0~YAAQxjVDF4u9OZ+IAQAA/MynrgrzawyY+shhkV6LdQuVG0VXX4iT6zbtcyMsC/Id3nLEQdA1ueCy6lDYrgFj5UoYbINNklZWNY2c1wCjDBwpnz0nCSN08lvY3+oVS7Jiaaq/+0veidDHwvlkz1ODuOyxXZniHRZGh1xiGdp2TzIE8UVXenBS/FzA3ex++VI7KM5DvizNHFO2QXmt9wDmG6yqPc4Rzo4c2EH8WGTx5zurnhQ2q6vEFWPsTvELpzT0lSZqJUz5qW+H+H2fDZkLgpDZwnzqwfTzLjEp+ICBBIt6LahxoINAZL5WTkE+ks2Q+2cgOUMLcsMYO2bUN8t16QCOSPm7yeBcetP4umorik8tHlA+A4ZGdg/BoOG3QUeNJZxMB0Bf49ZH6u4yKrk5lsY6xi9cvOZYo6xI7+s9~-1~-1~-1; qb_permanent=gkuisyi8co8-0liskqi6w-69tgrt8:1:1:1:1:0::0:1:0:BkhtLj:BkhtLj:::::211.52.1.133:seoul:2261:south%20korea:KR:37.56:127:jung-gu%20seoul:410014:seoul-teukbyeolsi:25025:migrated|1686557413582:EbFa==B=CRhL=s&Fv2m==B=CrkC=MQ&F4TI==B=Cs1j=J5::Yiup9VG:Yiup8WB:0:0:0::0:0:.louisvuitton.com:0; qb_session=1:1:32:EbFa=B&Fv2m=B&F4TI=B:0:Yiup8WB:0:0:0:0:.louisvuitton.com; _sctr=1%7C1686495600000; _ga_S6ED35NYJQ=GS1.1.1686557410.1.0.1686557415.55.0.0; utag_main=v_id:0188aea7b40c00231535fc13a6180506f006406700bd0$_sn:1$_se:8$_ss:0$_st:1686559215620$ses_id:1686557406222%3Bexp-session$_pn:1%3Bexp-session$dc_visit:1$dc_event:5%3Bexp-session$dc_region:eu-central-1%3Bexp-session'
+        'sec-ch-ua': '"Chromium";v="134", "Not:A-Brand";v="24", "Google Chrome";v="134"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'sec-fetch-dest': 'empty',
+        'sec-fetch-mode': 'cors',
+        'sec-fetch-site': 'same-site',
+        # Add more browser-like headers
+        'Accept-Encoding': 'gzip, deflate, br, zstd',
+        'Priority': 'u=1, i',
+        'Connection': 'keep-alive'
     }
+
+    # Random session ID to simulate browser behavior
+    session_id = ''.join(random.choice('0123456789abcdefABCDEF') for _ in range(32))
+    timestamp = str(int(time.time()))
+
+    # Detailed cookie string like browser would send
+    cookies = {
+        'AKA_A2': 'A',
+        'lv-dispatch': 'kor-kr',
+        'lv-dispatch-url': 'https://kr.louisvuitton.com/kor-kr/products/pochette-voyage-souple-monogram-other-nvprod6210015v/M13962',
+        'ak_cc': 'KR',
+        'ak_bmsc': f'session_id_{session_id}~{timestamp}',
+        'OPTOUTMULTI': '0:0%7Cc1:0%7Cc2:0%7Cc4:0%7Cc3:0%7Cc5:0',
+        '_ga': f'GA1.1.{random.randint(100000000, 999999999)}.{timestamp}',
+        '_ga_S6ED35NYJQ': f'GS1.1.{timestamp}.1.0.{timestamp}.0.0.0'
+    }
+
     data = {
         "flagShip": False,
         "country": "KR",
-        #"latitudeCenter": "37.48654195241737",
-        #"longitudeCenter": "127.0971466",
-        #"latitudeA": "37.48953011783969",
-        #"longitudeA": "127.09046253513489",
-        #"latitudeB": "37.48355378699504",
-        #"longitudeB": "127.10383066486511",
         "query": "",
         "clickAndCollect": False,
         "skuId": skuId,
         "pageType": "productsheet"
     }
 
-    response = requests.post(url, headers=headers, data=json.dumps(data))
+    try:
+        # Create a session to maintain cookies
+        session = requests.Session()
 
-    if response.status_code == 200:
-        textbox.config(state='normal')  # enable editing
-        stores = response.json().get('hits', [])
-        if stores:
-            for store in stores:
-                additional_properties = store.get('additionalProperty', [])
-                if any(item for item in additional_properties if item.get('name') == 'stockAvailability' and item.get('value') == 'true'):
-                    textbox.insert(tk.INSERT, f"SKU id: {skuId}\nStore Name: {store.get('name')}\n\n")
+        # Set the user agent and other persistent headers
+        session.headers.update(headers)
+
+        # Update cookies
+        for key, value in cookies.items():
+            session.cookies.set(key, value)
+
+        # Make the request with the session
+        response = session.post(url, json=data)
+
+        print("Response status code:", response.status_code)
+        print("Response headers:", response.headers)
+        print("Response content snippet:", response.text[:500])  # Print first 500 chars of response content
+
+        if response.status_code == 200:
+            textbox.config(state='normal')  # enable editing
+
+            # Clear previous results
+            textbox.delete(1.0, tk.END)
+
+            # Parse JSON response
+            response_json = response.json()
+            stores = response_json.get('hits', [])
+
+            if stores:
+                textbox.insert(tk.INSERT, f"=== Results for SKU: {skuId} ===\n\n")
+                available_stores = False
+
+                for store in stores:
+                    additional_properties = store.get('additionalProperty', [])
+                    is_available = False
+
+                    # Check if the item is available in this store
+                    for item in additional_properties:
+                        if item.get('name') == 'stockAvailability' and item.get('value') == 'true':
+                            is_available = True
+                            available_stores = True
+                            break
+
+                    if is_available:
+                        textbox.insert(tk.INSERT, f"✓ {store.get('name')}\n")
+
+                        # Add address if available
+                        address = store.get('address', {})
+                        if address:
+                            street_address = address.get('streetAddress', '')
+                            locality = address.get('addressLocality', '')
+                            region = address.get('addressRegion', '')
+                            postal_code = address.get('postalCode', '')
+
+                            address_parts = []
+                            if street_address:
+                                address_parts.append(street_address)
+                            if locality:
+                                address_parts.append(locality)
+                            if region:
+                                address_parts.append(region)
+                            if postal_code:
+                                address_parts.append(postal_code)
+
+                            if address_parts:
+                                textbox.insert(tk.INSERT, f"   주소: {', '.join(address_parts)}\n")
+
+                        # Add telephone if available
+                        telephone = store.get('telephone', '')
+                        if telephone:
+                            textbox.insert(tk.INSERT, f"   전화: {telephone}\n")
+
+                        # Add a blank line after each store for better readability
+                        textbox.insert(tk.INSERT, "\n")
+
+                if not available_stores:
+                    textbox.insert(tk.INSERT, '⚠️ 아이템이 어떤 매장에서도 이용할 수 없습니다.\n')
+            else:
+                textbox.insert(tk.INSERT, '⚠️ 매장 정보를 찾을 수 없습니다.\n')
+
+            textbox.insert(tk.INSERT, "\n" + "-" * 50 + "\n")
+            textbox.insert(tk.INSERT, "마지막 업데이트: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            textbox.yview(tk.END)  # Scroll the textbox to the end
+            textbox.config(state='disabled')  # disable editing
+
+            # Update status
+            status_label.config(
+                text=f"완료. {len([s for s in stores if any(item.get('name') == 'stockAvailability' and item.get('value') == 'true' for item in s.get('additionalProperty', []))])}개 매장에서 이용 가능")
         else:
-            textbox.insert(tk.INSERT, 'No store available.\n')
-        textbox.insert(tk.INSERT, "Last Updated: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n\n")
-        textbox.insert(tk.INSERT, '-' * 60 + "\n")
-        textbox.yview(tk.END)  # Scroll the textbox to the end
-        textbox.config(state='disabled')  # disable editing
-    else:
-        print("Error occurred:", response.status_code)
-        print("Response content:", response.content)  # print out response content in case of an error
+            print("Error occurred:", response.status_code)
+            textbox.config(state='normal')
+            textbox.delete(1.0, tk.END)
+            textbox.insert(tk.INSERT, f"⚠️ 오류: HTTP 상태 코드 {response.status_code}\n")
+            textbox.insert(tk.INSERT, "마지막 업데이트: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            textbox.config(state='disabled')
+            status_label.config(text=f"오류: HTTP 상태 코드 {response.status_code}")
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        textbox.config(state='normal')
+        textbox.delete(1.0, tk.END)
+        textbox.insert(tk.INSERT, f"⚠️ 오류: {e}\n")
+        textbox.insert(tk.INSERT, "마지막 업데이트: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S") + "\n")
+        textbox.config(state='disabled')
+        status_label.config(text=f"오류: {str(e)[:50]}")
+
 
 def update_schedule():
     # Clear all existing jobs
@@ -64,50 +181,95 @@ def update_schedule():
     skuId = input_entry.get()
     update_freq = freq_var.get()
 
-    if skuId and update_freq != "once":
-        # Start the thread to update stores
-        update_thread = Thread(target=get_stores, args=(st,))
-        update_thread.daemon = True  # Set the thread as a daemon so it terminates when the main program exits
-        update_thread.start()
+    if not skuId:
+        messagebox.showwarning("Warning", "Please enter a SKU ID")
+        return
 
+    # First run immediately
+    get_stores(st)
+
+    if update_freq != "once":
         # Schedule the job according to the selected frequency
         if update_freq == "hourly":
             schedule.every().hour.do(get_stores, textbox=st)
-    else:
-        get_stores(st)
+            status_label.config(text="자동 업데이트: 매시간")
+        elif update_freq == "every_5_min":
+            schedule.every(5).minutes.do(get_stores, textbox=st)
+            status_label.config(text="자동 업데이트: 5분마다")
+        elif update_freq == "every_30_sec":
+            schedule.every(30).seconds.do(get_stores, textbox=st)
+            status_label.config(text="자동 업데이트: 30초마다")
 
+
+def on_exit():
+    if messagebox.askokcancel("종료", "프로그램을 종료하시겠습니까?"):
+        root.destroy()
+
+
+# Set up the UI
 root = tk.Tk()
-root.title('LV Store Checker')
-root.geometry('500x350')
+root.title('LV 매장 재고 확인')
+root.geometry('550x450')
+root.protocol("WM_DELETE_WINDOW", on_exit)
 
-input_label = tk.Label(root, text='Enter SKU Id:')
-input_label.pack()
+# Create a frame for the input area
+input_frame = tk.Frame(root, pady=10)
+input_frame.pack(fill='x')
 
-input_entry = tk.Entry(root)
-input_entry.pack()
+input_label = tk.Label(input_frame, text='SKU 번호:')
+input_label.pack(side='left', padx=5)
 
+input_entry = tk.Entry(input_frame, width=20)
+input_entry.pack(side='left', padx=5)
+input_entry.focus()  # Set focus to the entry field
+
+# Add more update frequency options
 freq_var = tk.StringVar(root)
 freq_var.set("once")  # default value
-freq_label = tk.Label(root, text='Select Update Frequency:')
-freq_label.pack()
-freq_option = tk.OptionMenu(root, freq_var, "once", "hourly")
-freq_option.pack()
+freq_label = tk.Label(input_frame, text='업데이트:')
+freq_label.pack(side='left', padx=5)
+freq_option = tk.OptionMenu(input_frame, freq_var, "once", "every_30_sec", "every_5_min", "hourly")
+freq_option.pack(side='left', padx=5)
 
-button = tk.Button(root, text='Check', command=update_schedule)
-button.pack()
+button = tk.Button(input_frame, text='확인', command=update_schedule)
+button.pack(side='left', padx=10)
 
-st = scrolledtext.ScrolledText(root, state='disabled')
-st.pack(expand=True, fill='both')
+# Help text
+help_frame = tk.Frame(root)
+help_frame.pack(fill='x', padx=10)
+help_text = tk.Label(help_frame, text="입력 예: M13962 (대소문자 구분 없음)", fg="gray")
+help_text.pack(anchor='w')
+
+# Status area - scrollable text box
+st = scrolledtext.ScrolledText(root, height=20, state='disabled')
+st.pack(expand=True, fill='both', padx=10, pady=10)
+
+# Add status label at the bottom
+status_label = tk.Label(root, text="준비 완료", bd=1, relief=tk.SUNKEN, anchor=tk.W)
+status_label.pack(side=tk.BOTTOM, fill=tk.X)
+
 
 # Define a function for running the scheduler in a loop
 def run_scheduler():
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception as e:
+            print(f"Scheduler error: {e}")
         time.sleep(1)
+
 
 # Run the scheduler in a separate thread
 scheduler_thread = Thread(target=run_scheduler)
 scheduler_thread.daemon = True  # Set the thread as a daemon so it terminates when the main program exits
 scheduler_thread.start()
+
+
+# Handle Enter key to trigger check
+def on_enter(event):
+    update_schedule()
+
+
+root.bind('<Return>', on_enter)
 
 root.mainloop()
