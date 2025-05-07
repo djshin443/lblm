@@ -40,6 +40,7 @@ TH32CS_SNAPPROCESS = 0x00000002
 PROCESS_TERMINATE = 0x0001
 INVALID_HANDLE_VALUE = -1
 
+
 # Windows API 구조체
 class PROCESSENTRY32(ctypes.Structure):
     _fields_ = [
@@ -52,8 +53,9 @@ class PROCESSENTRY32(ctypes.Structure):
         ("th32ParentProcessID", wintypes.DWORD),
         ("pcPriClassBase", wintypes.LONG),
         ("dwFlags", wintypes.DWORD),
-        ("szExeFile", wintypes.CHAR * 260)
+        ("szExeFile", ctypes.c_char * 260)  # c_char 사용
     ]
+
 
 # Windows API 함수
 kernel32 = ctypes.windll.kernel32
@@ -63,6 +65,7 @@ Process32Next = kernel32.Process32Next
 CloseHandle = kernel32.CloseHandle
 OpenProcess = kernel32.OpenProcess
 TerminateProcess = kernel32.TerminateProcess
+
 
 def is_process_running(process_name):
     """프로세스 이름으로 실행 중인지 확인"""
@@ -74,49 +77,50 @@ def is_process_running(process_name):
             pass
     return False
 
+
 def terminate_process_by_name(process_name):
-    """프로세스 이름으로 강제 종료 (Windows 전용)"""
+    """프로세스 이름으로 강제 종료 (psutil 사용)"""
     try:
-        h_snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
-        if h_snapshot == INVALID_HANDLE_VALUE:
-            return False
-        
-        pe32 = PROCESSENTRY32()
-        pe32.dwSize = ctypes.sizeof(PROCESSENTRY32)
-        
-        if not Process32First(h_snapshot, ctypes.byref(pe32)):
-            CloseHandle(h_snapshot)
-            return False
-        
-        while True:
-            if process_name.lower() in str(pe32.szExeFile).lower():
-                pid = pe32.th32ProcessID
-                h_process = OpenProcess(PROCESS_TERMINATE, False, pid)
-                if h_process:
-                    try:
-                        if TerminateProcess(h_process, 1):
-                            logger.info(f"프로세스 종료 성공: {process_name} (PID: {pid})")
-                        else:
-                            logger.error(f"프로세스 종료 실패: {process_name} (PID: {pid})")
-                    finally:
-                        CloseHandle(h_process)
-            
-            if not Process32Next(h_snapshot, ctypes.byref(pe32)):
-                break
-        
-        CloseHandle(h_snapshot)
-        return True
+        terminated = False
+        for proc in psutil.process_iter(['name', 'pid']):
+            try:
+                if process_name.lower() in proc.info['name'].lower():
+                    pid = proc.info['pid']
+                    process = psutil.Process(pid)
+                    process.terminate()  # 정상 종료 시도
+
+                    # 종료 대기 (최대 3초)
+                    gone, still_alive = psutil.wait_procs([process], timeout=3)
+
+                    # 여전히 살아있다면 강제 종료
+                    if still_alive:
+                        process.kill()
+
+                    logger.info(f"프로세스 종료 성공: {process_name} (PID: {pid})")
+                    terminated = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
+                logger.error(f"프로세스 접근 오류: {str(e)}")
+            except Exception as e:
+                logger.error(f"프로세스 종료 중 오류 발생: {str(e)}")
+
+        return terminated
     except Exception as e:
         logger.error(f"프로세스 종료 중 오류 발생: {str(e)}")
         return False
 
+
 def kill_all_chrome_drivers():
     """모든 chromedriver 프로세스 종료"""
-    terminate_process_by_name("chromedriver.exe")
+    try:
+        terminate_process_by_name("chromedriver.exe")
+    except Exception as e:
+        logger.error(f"ChromeDriver 종료 중 오류: {str(e)}")
+
 
 def kill_all_chrome_processes():
     """모든 Chrome 프로세스 종료"""
     terminate_process_by_name("chrome.exe")
+
 
 def set_process_priority_high():
     """현재 프로세스의 우선순위를 높게 설정"""
@@ -128,9 +132,11 @@ def set_process_priority_high():
     except Exception as e:
         logger.error(f"프로세스 우선순위 설정 오류: {str(e)}")
 
+
 def register_exit_handlers():
     """프로그램 종료 시 실행할 처리기 등록"""
     atexit.register(kill_all_chrome_drivers)
+
 
 def get_chrome_version():
     """Windows에서 Chrome 버전 확인"""
@@ -162,6 +168,7 @@ def get_chrome_version():
             logger.error(f"파일에서 Chrome 버전 확인 실패: {str(e)}")
 
     return None
+
 
 def setup_driver(debug=False):
     """향상된 크롬 드라이버 설정"""
@@ -226,7 +233,7 @@ def setup_driver(debug=False):
         options.add_argument('--disable-software-rasterizer')
         options.add_argument('--proxy-bypass-list=*')
         options.add_argument('--ignore-certificate-errors')
-        
+
         # Windows 최적화를 위한 추가 옵션
         options.add_argument('--disable-extensions')
         options.add_argument('--disable-popup-blocking')
@@ -240,18 +247,18 @@ def setup_driver(debug=False):
         options.add_argument('--disable-component-update')
         options.add_argument('--disable-domain-reliability')
         options.add_argument('--disable-sync')
-        
+
         # 메모리 사용량 최적화
         options.add_argument('--js-flags="--max_old_space_size=128"')
-        
+
         # 디버그 모드가 아닐 때만 headless 모드 활성화
         if not debug:
             options.add_argument('--headless')
-        
+
         # 5. Service 객체 생성 및 드라이버 초기화
         service = ChromeService(chrome_driver_path)
         driver = webdriver.Chrome(service=service, options=options)
-        
+
         # 페이지 로드 전략 설정 (성능 향상)
         driver.set_page_load_timeout(30)  # 30초 타임아웃
         driver.get("about:blank")
@@ -267,6 +274,7 @@ def setup_driver(debug=False):
         # 기존 드라이버 프로세스 정리
         kill_all_chrome_drivers()
         raise Exception(f"ChromeDriver 초기화 실패: {str(e)}")
+
 
 def get_url_with_protocol(url):
     """URL에 프로토콜 추가 및 유효성 검사"""
@@ -300,7 +308,7 @@ class URLTestThread(QThread):
     csv_log_signal = pyqtSignal(list)
     finished_signal = pyqtSignal()
     progress_signal = pyqtSignal(int)  # 진행 상황 표시용
-    
+
     def __init__(self, sites, interval, count, browser_option, logging_option, number_option, block_phrase,
                  console_logging_option, block_mode, debug_mode=False):
         super().__init__()
@@ -319,7 +327,7 @@ class URLTestThread(QThread):
         self.mutex = QMutex()
         self.wait_condition = QWaitCondition()
         self.shutdown_event = False
-        
+
         # 스레드 종료 시 자원 정리
         self.finished.connect(self.cleanup_resources)
 
@@ -328,17 +336,17 @@ class URLTestThread(QThread):
         iteration = 0
         self.driver = None
         sites_count = len(self.sites)
-        
+
         try:
             while self.running and (self.count == 0 or iteration < self.count):
                 for site_idx, site in enumerate(self.sites):
                     if not self.running:
                         break
-                        
+
                     # 진행 상황 보고
                     progress = int((site_idx / sites_count) * 100)
                     self.progress_signal.emit(progress)
-                    
+
                     site_with_protocol, error_msg = get_url_with_protocol(site)
                     if error_msg:
                         self.log_signal.emit(f"[{datetime.now()}] 오류: {error_msg}")
@@ -385,7 +393,7 @@ class URLTestThread(QThread):
 
                         # 스레드 안전한 대기
                         self.safe_sleep(self.interval)
-                        
+
                         if not self.running:
                             break
 
@@ -442,9 +450,9 @@ class URLTestThread(QThread):
 
                 if not self.running:
                     break
-                    
+
                 iteration += 1
-                
+
                 # 진행 상황 100% 표시
                 if iteration >= self.count and self.count > 0:
                     self.progress_signal.emit(100)
@@ -459,14 +467,14 @@ class URLTestThread(QThread):
         """스레드 안전한 대기 (중단 가능)"""
         if seconds <= 0:
             return
-            
+
         self.mutex.lock()
         try:
             if self.running:
                 self.wait_condition.wait(self.mutex, seconds * 1000)
         finally:
             self.mutex.unlock()
-    
+
     def safe_quit_driver(self):
         """안전하게 드라이버 종료"""
         if self.driver is not None:
@@ -480,25 +488,25 @@ class URLTestThread(QThread):
     def stop(self):
         """스레드 중지 (더 빠르고 안정적으로)"""
         self.running = False
-        
+
         # 대기 중인 스레드 깨우기
         self.mutex.lock()
         self.wait_condition.wakeAll()
         self.mutex.unlock()
-        
+
         # 드라이버 안전하게 종료
         self.safe_quit_driver()
-        
+
         # 크롬 드라이버 프로세스 강제 종료
         kill_all_chrome_drivers()
-        
+
         # QThread 종료
         self.quit()
         if not self.wait(3000):  # 3초 대기
             logger.warning("스레드가 정상적으로 종료되지 않아 강제 종료합니다.")
             self.terminate()
             self.wait(1000)
-    
+
     def cleanup_resources(self):
         """스레드 종료 시 자원 정리"""
         logger.info("스레드 자원 정리 중...")
@@ -507,6 +515,7 @@ class URLTestThread(QThread):
 
 class URLTestApp(QWidget):
     """URL 테스트 애플리케이션 - 개선된 버전"""
+
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -514,16 +523,16 @@ class URLTestApp(QWidget):
         self.log_count = 1
         self.test_threads = []
         self.csv_file_path = None
-        
+
         # 윈도우 최적화 설정
         set_process_priority_high()
         register_exit_handlers()
-        
+
         # 정기적으로 메모리 관리 수행
         self.cleanup_timer = QTimer(self)
         self.cleanup_timer.timeout.connect(self.perform_memory_cleanup)
         self.cleanup_timer.start(30000)  # 30초마다 실행
-        
+
         # 프로그램 종료 시 정리 작업
         QApplication.instance().aboutToQuit.connect(self.on_application_exit)
 
@@ -669,7 +678,7 @@ class URLTestApp(QWidget):
         self.parallel_input.setRange(1, 5)  # 최대 5개 쓰레드로 제한 (윈도우 성능 고려)
         self.parallel_input.setValue(1)
         self.parallel_input.setToolTip("동시에 실행할 브라우저 개수를 설정합니다.")
-        
+
         # 디버그 모드 옵션 추가
         self.debug_mode_checkbox = QCheckBox("디버그 모드 (브라우저 표시)")
         self.debug_mode_checkbox.setChecked(False)
@@ -703,7 +712,7 @@ class URLTestApp(QWidget):
             }
         """)
         self.clear_button.clicked.connect(self.clear_log)
-        
+
         # 강제 종료 버튼 추가
         self.force_stop_button = QPushButton("강제 종료")
         self.force_stop_button.setStyleSheet("""
@@ -878,14 +887,14 @@ class URLTestApp(QWidget):
         # 기존에 실행 중인 스레드가 있으면 정리
         self.stop_test(silent=True)
         time.sleep(1)  # 기존 스레드 정리 대기
-        
+
         # 크롬 드라이버와 크롬 프로세스 정리
         kill_all_chrome_drivers()
-        
+
         # 로그 업데이트
         self.log_message("크롬 드라이버를 정리했습니다.")
         self.log_message(f"테스트 시작: {len(sites)}개 URL, {self.parallel_input.value()}개 스레드")
-        
+
         # 진행 상황 초기화
         self.progress_bar.setValue(0)
 
@@ -923,7 +932,7 @@ class URLTestApp(QWidget):
                 background-color: #45a049;
             }
         """)
-        
+
         # 버튼 활성화/비활성화 상태 변경
         self.force_stop_button.setEnabled(True)
 
@@ -933,12 +942,12 @@ class URLTestApp(QWidget):
         if self.test_threads:
             total_progress = 0
             running_threads = 0
-            
+
             for thread in self.test_threads:
                 if thread.isRunning():
                     total_progress += value
                     running_threads += 1
-            
+
             if running_threads > 0:
                 avg_progress = total_progress // running_threads
                 self.progress_bar.setValue(avg_progress)
@@ -958,16 +967,16 @@ class URLTestApp(QWidget):
 
             # UI 즉시 업데이트
             QApplication.processEvents()
-            
+
             # 모든 스레드에 종료 신호 전송
             for thread in self.test_threads:
                 if thread.isRunning():
                     thread.stop()
-            
+
             # 스레드가 종료되기를 3초간 대기
             start_time = time.time()
             all_stopped = False
-            
+
             while not all_stopped and time.time() - start_time < 3:
                 all_stopped = True
                 for thread in self.test_threads:
@@ -975,16 +984,16 @@ class URLTestApp(QWidget):
                         all_stopped = False
                         QApplication.processEvents()  # UI 이벤트 처리
                 time.sleep(0.1)
-            
+
             # 여전히 실행 중인 스레드 강제 종료
             for thread in self.test_threads:
                 if thread.isRunning():
                     thread.terminate()
                     thread.wait(500)  # 0.5초 대기
-            
+
             # 크롬 드라이버와 크롬 프로세스 강제 종료
             kill_all_chrome_drivers()
-            
+
             # UI 상태 업데이트
             self.test_threads.clear()
             self.start_button.setText("시작")
@@ -997,10 +1006,10 @@ class URLTestApp(QWidget):
                     background-color: #7a7a7a;
                 }
             """)
-            
+
             if not silent:
                 self.log_message("테스트가 중지되었습니다.")
-                
+
             self.force_stop_button.setEnabled(True)
             self.progress_bar.setValue(0)
 
@@ -1008,14 +1017,14 @@ class URLTestApp(QWidget):
         """테스트 강제 종료 (모든 크롬 프로세스 포함)"""
         # 사용자에게 작업을 확인
         reply = QMessageBox.question(
-            self, '강제 종료 확인', 
+            self, '강제 종료 확인',
             "모든 Chrome 및 ChromeDriver 프로세스를 강제 종료합니다. 계속하시겠습니까?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
-        
+
         if reply == QMessageBox.Yes:
             self.log_message("모든 Chrome 및 ChromeDriver 프로세스 강제 종료 중...")
-            
+
             # 스레드 강제 종료
             if hasattr(self, 'test_threads') and self.test_threads:
                 for thread in self.test_threads:
@@ -1023,11 +1032,11 @@ class URLTestApp(QWidget):
                         thread.terminate()
                         thread.wait(500)
                 self.test_threads.clear()
-            
+
             # 크롬 드라이버 및 크롬 프로세스 강제 종료
             kill_all_chrome_drivers()
             kill_all_chrome_processes()
-            
+
             # 상태 업데이트
             self.start_button.setText("시작")
             self.start_button.setStyleSheet("""
@@ -1057,20 +1066,20 @@ class URLTestApp(QWidget):
         self.progress_bar.setValue(100)
         self.log_message("테스트가 완료되었습니다.")
         self.test_threads = []
-    
+
     def perform_memory_cleanup(self):
         """주기적인 메모리 정리 작업"""
         import gc
         gc.collect()
-    
+
     def on_application_exit(self):
         """애플리케이션 종료 시 정리 작업"""
         # 진행 중인 스레드 종료
         self.stop_test(silent=True)
-        
+
         # 크롬 드라이버 및 크롬 프로세스 강제 종료
         kill_all_chrome_drivers()
-        
+
         logger.info("애플리케이션이 정상적으로 종료되었습니다.")
 
 
@@ -1079,10 +1088,10 @@ if __name__ == '__main__':
         # Windows에서 콘솔 창이 닫히지 않게 하기 위한 핸들러
         kernel32 = ctypes.WinDLL('kernel32')
         kernel32.SetConsoleCtrlHandler(lambda event_type: True, True)
-        
+
         # 프로그램 시작 시 크롬 드라이버 정리
         kill_all_chrome_drivers()
-        
+
         app = QApplication(sys.argv)
         ex = URLTestApp()
         ex.show()
