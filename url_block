@@ -5,10 +5,14 @@ import time
 import logging
 import csv
 from urllib.parse import urlparse, unquote
-from datetime import datetime
+from datetime import datetime, timedelta
 import signal
 import psutil
 import atexit
+import shutil
+import gc
+import tempfile
+import glob
 
 # Windows 전용 모듈
 import ctypes
@@ -20,16 +24,27 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QPushButton, QSpinBox, \
-    QComboBox, QTextEdit, QHBoxLayout, QFileDialog, QCheckBox, QMessageBox, QProgressBar
+    QComboBox, QTextEdit, QHBoxLayout, QFileDialog, QCheckBox, QMessageBox, QProgressBar, QSystemTrayIcon, QMenu
 from PyQt5.QtCore import QThread, pyqtSignal, QTimer, Qt, QMutex, QWaitCondition
-from PyQt5.QtGui import QColor, QPalette
+from PyQt5.QtGui import QColor, QPalette, QIcon
 import urllib3
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException, NoSuchWindowException
 
 # 로깅 설정
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log_directory = os.path.join(os.getcwd(), "logs")
+if not os.path.exists(log_directory):
+    os.makedirs(log_directory)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(os.path.join(log_directory, f"app_{datetime.now().strftime('%y%m%d%H%M%S')}.log")),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger()
 
 # InsecureRequestWarning 경고를 무시합니다.
@@ -40,6 +55,12 @@ TH32CS_SNAPPROCESS = 0x00000002
 PROCESS_TERMINATE = 0x0001
 INVALID_HANDLE_VALUE = -1
 
+# 메모리 관리 상수
+MAX_MEMORY_PERCENT = 80  # 최대 메모리 사용량 비율 (%)
+LOG_RETENTION_DAYS = 7   # 로그 보관 기간 (일)
+MAX_LOG_SIZE_MB = 50     # 최대 로그 파일 크기 (MB)
+MEMORY_CHECK_INTERVAL = 5 * 60 * 1000  # 메모리 확인 간격 (ms): 5분
+CHROME_TEMP_PROFILE_BASE = os.path.join(tempfile.gettempdir(), "chrome_profiles")
 
 # Windows API 구조체
 class PROCESSENTRY32(ctypes.Structure):
@@ -56,7 +77,6 @@ class PROCESSENTRY32(ctypes.Structure):
         ("szExeFile", ctypes.c_char * 260)  # c_char 사용
     ]
 
-
 # Windows API 함수
 kernel32 = ctypes.windll.kernel32
 CreateToolhelp32Snapshot = kernel32.CreateToolhelp32Snapshot
@@ -65,7 +85,6 @@ Process32Next = kernel32.Process32Next
 CloseHandle = kernel32.CloseHandle
 OpenProcess = kernel32.OpenProcess
 TerminateProcess = kernel32.TerminateProcess
-
 
 def is_process_running(process_name):
     """프로세스 이름으로 실행 중인지 확인"""
@@ -76,7 +95,6 @@ def is_process_running(process_name):
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     return False
-
 
 def terminate_process_by_name(process_name):
     """프로세스 이름으로 강제 종료 (psutil 사용)"""
@@ -108,7 +126,6 @@ def terminate_process_by_name(process_name):
         logger.error(f"프로세스 종료 중 오류 발생: {str(e)}")
         return False
 
-
 def kill_all_chrome_drivers():
     """모든 chromedriver 프로세스 종료"""
     try:
@@ -116,11 +133,9 @@ def kill_all_chrome_drivers():
     except Exception as e:
         logger.error(f"ChromeDriver 종료 중 오류: {str(e)}")
 
-
 def kill_all_chrome_processes():
     """모든 Chrome 프로세스 종료"""
     terminate_process_by_name("chrome.exe")
-
 
 def set_process_priority_high():
     """현재 프로세스의 우선순위를 높게 설정"""
@@ -132,11 +147,29 @@ def set_process_priority_high():
     except Exception as e:
         logger.error(f"프로세스 우선순위 설정 오류: {str(e)}")
 
-
 def register_exit_handlers():
     """프로그램 종료 시 실행할 처리기 등록"""
     atexit.register(kill_all_chrome_drivers)
+    atexit.register(cleanup_temp_profiles)
 
+def cleanup_temp_profiles():
+    """임시 Chrome 프로필 디렉토리 정리"""
+    try:
+        if os.path.exists(CHROME_TEMP_PROFILE_BASE):
+            shutil.rmtree(CHROME_TEMP_PROFILE_BASE, ignore_errors=True)
+            logger.info(f"임시 Chrome 프로필 디렉토리 정리 완료: {CHROME_TEMP_PROFILE_BASE}")
+    except Exception as e:
+        logger.error(f"임시 프로필 정리 중 오류 발생: {str(e)}")
+
+def create_temp_profile():
+    """임시 Chrome 프로필 디렉토리 생성"""
+    if not os.path.exists(CHROME_TEMP_PROFILE_BASE):
+        os.makedirs(CHROME_TEMP_PROFILE_BASE)
+    
+    # 고유한 프로필 디렉터리 생성
+    profile_dir = os.path.join(CHROME_TEMP_PROFILE_BASE, f"profile_{datetime.now().strftime('%Y%m%d%H%M%S%f')}")
+    os.makedirs(profile_dir, exist_ok=True)
+    return profile_dir
 
 def get_chrome_version():
     """Windows에서 Chrome 버전 확인"""
@@ -169,8 +202,7 @@ def get_chrome_version():
 
     return None
 
-
-def setup_driver(debug=False):
+def setup_driver(debug=False, use_temp_profile=True):
     """향상된 크롬 드라이버 설정"""
     options = Options()
 
@@ -248,12 +280,33 @@ def setup_driver(debug=False):
         options.add_argument('--disable-domain-reliability')
         options.add_argument('--disable-sync')
 
-        # 메모리 사용량 최적화
+        # 메모리 사용량 최적화 - 개선됨
         options.add_argument('--js-flags="--max_old_space_size=128"')
+        options.add_argument('--disable-features=site-per-process')  # 프로세스 격리 해제로 메모리 사용량 감소
+        options.add_argument('--memory-model=low')
+        options.add_argument('--disable-hang-monitor')
+        options.add_argument('--disable-translate')
+
+        # 디스크 캐시 크기 제한
+        options.add_argument('--disk-cache-size=52428800')  # 50MB로 제한
+        
+        # 캐시를 완전히 비활성화하여 디스크 사용량 방지
+        options.add_argument('--disable-application-cache')
+        options.add_argument('--media-cache-size=0')
+        options.add_argument('--aggressive-cache-discard')
+
+        # 더 효율적인 페이지 로딩
+        options.page_load_strategy = 'eager'  # 'normal', 'eager', 'none' 중 선택
+
+        # 임시 프로필 사용
+        if use_temp_profile:
+            profile_dir = create_temp_profile()
+            options.add_argument(f'--user-data-dir={profile_dir}')
+            logger.info(f"임시 Chrome 프로필 생성: {profile_dir}")
 
         # 디버그 모드가 아닐 때만 headless 모드 활성화
         if not debug:
-            options.add_argument('--headless')
+            options.add_argument('--headless=new')  # 새로운 헤드리스 모드 사용
 
         # 5. Service 객체 생성 및 드라이버 초기화
         service = ChromeService(chrome_driver_path)
@@ -275,7 +328,6 @@ def setup_driver(debug=False):
         kill_all_chrome_drivers()
         raise Exception(f"ChromeDriver 초기화 실패: {str(e)}")
 
-
 def get_url_with_protocol(url):
     """URL에 프로토콜 추가 및 유효성 검사"""
     if not url.strip():  # 빈 URL 체크
@@ -296,11 +348,106 @@ def get_url_with_protocol(url):
         logger.error(error_msg)
         return None, error_msg
 
-
 def get_log_filename():
     """로그 파일명 생성"""
-    return f"로그_{datetime.now().strftime('%y%m%d%H')}.csv"
+    log_dir = os.path.join(os.getcwd(), "csv_logs")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    return os.path.join(log_dir, f"로그_{datetime.now().strftime('%y%m%d%H')}.csv")
 
+def cleanup_old_logs():
+    """오래된 로그 파일 정리"""
+    try:
+        # CSV 로그 정리
+        csv_log_dir = os.path.join(os.getcwd(), "csv_logs")
+        if os.path.exists(csv_log_dir):
+            cutoff_date = datetime.now() - timedelta(days=LOG_RETENTION_DAYS)
+            
+            for file in os.listdir(csv_log_dir):
+                file_path = os.path.join(csv_log_dir, file)
+                
+                # 파일 크기 확인
+                if os.path.getsize(file_path) > MAX_LOG_SIZE_MB * 1024 * 1024:
+                    # 큰 파일은 백업 후 삭제
+                    backup_path = file_path + ".bak"
+                    try:
+                        shutil.copy2(file_path, backup_path)
+                        os.remove(file_path)
+                        logger.info(f"큰 로그 파일 백업 및 삭제: {file_path}")
+                    except Exception as e:
+                        logger.error(f"큰 파일 처리 오류: {str(e)}")
+                    continue
+                
+                # 파일 날짜 확인
+                try:
+                    file_date_str = file.split('_')[1].split('.')[0][:6]  # 'yymmddhh' 형식에서 'yymmdd' 추출
+                    file_date = datetime.strptime(file_date_str, '%y%m%d')
+                    
+                    if file_date < cutoff_date:
+                        os.remove(file_path)
+                        logger.info(f"오래된 로그 파일 삭제: {file}")
+                except (ValueError, IndexError):
+                    # 파일명 형식이 예상과 다른 경우
+                    logger.warning(f"파일명 형식이 예상과 다릅니다: {file}")
+                    continue
+        
+        # 앱 로그 정리
+        app_log_dir = os.path.join(os.getcwd(), "logs")
+        if os.path.exists(app_log_dir):
+            for file in os.listdir(app_log_dir):
+                file_path = os.path.join(app_log_dir, file)
+                # 파일 수정 시간 기준 오래된 파일 삭제
+                if os.path.getmtime(file_path) < cutoff_date.timestamp():
+                    os.remove(file_path)
+                    logger.info(f"오래된 앱 로그 파일 삭제: {file}")
+        
+        return True
+    except Exception as e:
+        logger.error(f"로그 정리 중 오류 발생: {str(e)}")
+        return False
+
+def check_system_resources():
+    """시스템 리소스 확인 및 경고"""
+    try:
+        # 메모리 사용량 확인
+        memory = psutil.virtual_memory()
+        memory_percent = memory.percent
+        
+        # 디스크 사용량 확인
+        disk = psutil.disk_usage('/')
+        disk_percent = disk.percent
+        
+        # CPU 사용량 확인
+        cpu_percent = psutil.cpu_percent(interval=0.5)
+        
+        # 메모리 사용량이 임계치를 초과할 경우
+        if memory_percent > MAX_MEMORY_PERCENT:
+            logger.warning(f"메모리 사용량 경고: {memory_percent}% (임계치: {MAX_MEMORY_PERCENT}%)")
+            # 가비지 컬렉션 강제 실행
+            gc.collect()
+            # 로그 정리
+            cleanup_old_logs()
+            return False
+        
+        # 디스크 사용량이 90%를 초과할 경우
+        if disk_percent > 90:
+            logger.warning(f"디스크 사용량 경고: {disk_percent}% (임계치: 90%)")
+            # 로그 정리
+            cleanup_old_logs()
+            return False
+        
+        # CPU 사용량이 95%를 초과할 경우
+        if cpu_percent > 95:
+            logger.warning(f"CPU 사용량 경고: {cpu_percent}% (임계치: 95%)")
+            return False
+        
+        # 모든 리소스가 정상 범위 내
+        logger.info(f"시스템 리소스 상태: 메모리 {memory_percent}%, 디스크 {disk_percent}%, CPU {cpu_percent}%")
+        return True
+    
+    except Exception as e:
+        logger.error(f"시스템 리소스 확인 중 오류 발생: {str(e)}")
+        return True  # 오류 발생 시에도 계속 실행
 
 class URLTestThread(QThread):
     """URL 테스트 스레드 - 개선된 버전"""
@@ -308,6 +455,7 @@ class URLTestThread(QThread):
     csv_log_signal = pyqtSignal(list)
     finished_signal = pyqtSignal()
     progress_signal = pyqtSignal(int)  # 진행 상황 표시용
+    error_signal = pyqtSignal(str)     # 오류 신호
 
     def __init__(self, sites, interval, count, browser_option, logging_option, number_option, block_phrase,
                  console_logging_option, block_mode, debug_mode=False):
@@ -327,6 +475,18 @@ class URLTestThread(QThread):
         self.mutex = QMutex()
         self.wait_condition = QWaitCondition()
         self.shutdown_event = False
+        self.restart_required = False
+        self.memory_warning_sent = False
+        self.restart_count = 0
+        self.max_restarts = 5
+        self.last_driver_restart = time.time()
+        self.use_temp_profile = True  # 임시 프로필 사용 여부
+        
+        # 첫 번째 크롬 프로필 생성
+        if self.use_temp_profile:
+            self.current_profile = create_temp_profile()
+        else:
+            self.current_profile = None
 
         # 스레드 종료 시 자원 정리
         self.finished.connect(self.cleanup_resources)
@@ -336,9 +496,28 @@ class URLTestThread(QThread):
         iteration = 0
         self.driver = None
         sites_count = len(self.sites)
+        last_resource_check = time.time()
 
         try:
             while self.running and (self.count == 0 or iteration < self.count):
+                # 주기적으로 시스템 리소스 확인 (60초마다)
+                if time.time() - last_resource_check > 60:
+                    if not check_system_resources():
+                        # 리소스 문제가 있을 경우 경고 로그
+                        if not self.memory_warning_sent:
+                            self.log_signal.emit(f"[{datetime.now()}] 경고: 시스템 리소스 부족. 가비지 컬렉션 및 로그 정리 수행.")
+                            self.memory_warning_sent = True
+                            # 드라이버 재시작
+                            self.safe_quit_driver()
+                            self.driver = None
+                            gc.collect()  # 강제 가비지 컬렉션
+                    else:
+                        self.memory_warning_sent = False
+                    last_resource_check = time.time()
+                
+                # 주기적으로 로그 정리 (2시간마다)
+                cleanup_old_logs()
+
                 for site_idx, site in enumerate(self.sites):
                     if not self.running:
                         break
@@ -353,12 +532,35 @@ class URLTestThread(QThread):
                         self.csv_log_signal.emit([site, "오류", error_msg])
                         continue
 
+                    # 주기적으로 드라이버 재시작 (메모리 누수 방지, 2시간마다)
+                    current_time = time.time()
+                    if self.driver is not None and current_time - self.last_driver_restart > 7200:  # 2시간 = 7200초
+                        self.log_signal.emit(f"[{datetime.now()}] 정기 드라이버 재시작 (메모리 누수 방지)")
+                        self.safe_quit_driver()
+                        self.driver = None
+                        gc.collect()  # 강제 가비지 컬렉션
+                        self.last_driver_restart = current_time
+
                     # 브라우저가 실행 중인지 확인하고, 종료되었다면 재시작
                     if self.browser_option == 1:  # 한 번만 열기 옵션일 때
                         try:
                             if self.driver is not None:
                                 # 브라우저가 살아있는지 테스트
                                 self.driver.current_url
+
+                                # 디버그 모드 변경 감지 - 실시간 반영
+                                current_headless = '--headless=new' in self.driver.options.arguments
+                                if self.debug_mode and current_headless:
+                                    # 디버그 모드로 전환 필요
+                                    self.log_signal.emit(f"[{datetime.now()}] 디버그 모드로 변경 감지, 브라우저 재시작")
+                                    self.safe_quit_driver()
+                                    self.driver = None
+                                elif not self.debug_mode and not current_headless:
+                                    # 헤드리스 모드로 전환 필요
+                                    self.log_signal.emit(f"[{datetime.now()}] 헤드리스 모드로 변경 감지, 브라우저 재시작")
+                                    self.safe_quit_driver()
+                                    self.driver = None
+
                         except (WebDriverException, NoSuchWindowException, Exception) as e:
                             self.log_signal.emit(f"[{datetime.now()}] 브라우저가 종료됨, 재시작 시도")
                             try:
@@ -371,7 +573,8 @@ class URLTestThread(QThread):
                     # 브라우저가 없으면 새로 시작
                     if self.browser_option == 0 or self.driver is None:
                         try:
-                            self.driver = setup_driver(debug=self.debug_mode)
+                            self.driver = setup_driver(debug=self.debug_mode, use_temp_profile=self.use_temp_profile)
+                            self.last_driver_restart = time.time()
                         except Exception as e:
                             self.log_signal.emit(f"[{datetime.now()}] 드라이버 설정 오류: {str(e)}")
                             time.sleep(2)  # 오류 발생 시 더 길게 대기
@@ -390,6 +593,9 @@ class URLTestThread(QThread):
                         WebDriverWait(self.driver, 30).until(
                             EC.presence_of_element_located((By.TAG_NAME, "body"))
                         )
+
+                        # 메모리 사용량 확인 및 정리
+                        self.check_and_clean_memory()
 
                         # 스레드 안전한 대기
                         self.safe_sleep(self.interval)
@@ -457,11 +663,53 @@ class URLTestThread(QThread):
                 if iteration >= self.count and self.count > 0:
                     self.progress_signal.emit(100)
 
+                # 메모리 사용량 확인 및 로그 정리
+                self.check_and_clean_memory()
+
+                # 중간 가비지 컬렉션 수행
+                if iteration % 10 == 0:  # 10회 반복마다
+                    gc.collect()
+
         except Exception as e:
             logger.error(f"스레드 실행 중 예외 발생: {str(e)}")
+            self.error_signal.emit(f"스레드 오류: {str(e)}")
         finally:
             self.safe_quit_driver()
             self.finished_signal.emit()
+
+    def check_and_clean_memory(self):
+        """메모리 사용량 확인 및 정리"""
+        try:
+            # 현재 프로세스의 메모리 사용량 확인
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / (1024 * 1024)  # MB 단위
+            
+            # 시스템 메모리 사용량 확인
+            system_memory = psutil.virtual_memory()
+            system_memory_percent = system_memory.percent
+            
+            # 로그에 메모리 사용량 기록 (30분마다)
+            if time.time() % 1800 < 5:  # 30분(1800초)마다 5초 이내
+                logger.info(f"메모리 사용량: 프로세스 {memory_mb:.2f} MB, 시스템 {system_memory_percent}%")
+            
+            # 메모리 사용량이 높을 경우 정리 작업
+            if memory_mb > 500 or system_memory_percent > MAX_MEMORY_PERCENT:
+                logger.warning(f"높은 메모리 사용량 감지: {memory_mb:.2f} MB / {system_memory_percent}%. 정리 수행")
+                
+                # 가비지 컬렉션 실행
+                gc.collect()
+                
+                # 브라우저가 열려있으면 재시작
+                if self.driver is not None and memory_mb > 800:  # 800 MB 이상이면 브라우저 재시작
+                    logger.warning("높은 메모리 사용량으로 브라우저 재시작")
+                    self.safe_quit_driver()
+                    self.driver = None
+                    
+                # 로그 정리
+                cleanup_old_logs()
+        except Exception as e:
+            logger.error(f"메모리 확인 중 오류: {str(e)}")
 
     def safe_sleep(self, seconds):
         """스레드 안전한 대기 (중단 가능)"""
@@ -476,14 +724,35 @@ class URLTestThread(QThread):
             self.mutex.unlock()
 
     def safe_quit_driver(self):
-        """안전하게 드라이버 종료"""
+        """안전하게 드라이버 종료 - 개선됨"""
         if self.driver is not None:
             try:
+                # 모든 브라우저 창 닫기 시도
+                try:
+                    original_handle = self.driver.current_window_handle
+                    for handle in self.driver.window_handles:
+                        if handle != original_handle:
+                            self.driver.switch_to.window(handle)
+                            self.driver.close()
+
+                    # 메인 창으로 돌아가서 종료
+                    self.driver.switch_to.window(original_handle)
+                except Exception:
+                    pass  # 창 관련 오류 무시
+
+                # 드라이버 종료
                 self.driver.quit()
             except Exception as e:
                 logger.error(f"드라이버 종료 실패: {str(e)}")
+                # 강제 종료 시도
+                try:
+                    self.driver.quit()
+                except:
+                    pass
             finally:
                 self.driver = None
+                # 메모리 정리 촉진
+                gc.collect()
 
     def stop(self):
         """스레드 중지 (더 빠르고 안정적으로)"""
@@ -512,6 +781,50 @@ class URLTestThread(QThread):
         logger.info("스레드 자원 정리 중...")
         self.safe_quit_driver()
 
+class SystemMonitor(QThread):
+    """시스템 리소스 모니터링 스레드"""
+    resource_signal = pyqtSignal(dict)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.running = True
+    
+    def run(self):
+        while self.running:
+            try:
+                # 시스템 리소스 정보 수집
+                memory = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+                cpu_percent = psutil.cpu_percent(interval=1)
+                
+                # 프로세스 정보 수집
+                process = psutil.Process(os.getpid())
+                process_memory = process.memory_info().rss / (1024 * 1024)  # MB
+                
+                # 시그널 발생
+                self.resource_signal.emit({
+                    'memory_percent': memory.percent,
+                    'disk_percent': disk.percent,
+                    'cpu_percent': cpu_percent,
+                    'process_memory': process_memory
+                })
+                
+                # 10초마다 업데이트
+                for _ in range(10):
+                    if not self.running:
+                        break
+                    time.sleep(1)
+            
+            except Exception as e:
+                logger.error(f"시스템 모니터링 오류: {str(e)}")
+                time.sleep(10)  # 오류 발생 시 10초 대기
+    
+    def stop(self):
+        self.running = False
+        self.quit()
+        if not self.wait(3000):
+            self.terminate()
+            self.wait(1000)
 
 class URLTestApp(QWidget):
     """URL 테스트 애플리케이션 - 개선된 버전"""
@@ -523,39 +836,160 @@ class URLTestApp(QWidget):
         self.log_count = 1
         self.test_threads = []
         self.csv_file_path = None
+        self.csv_encoding = 'utf-8-sig'
+        self.tray_icon = None
 
         # 윈도우 최적화 설정
         set_process_priority_high()
         register_exit_handlers()
+        
+        # 시스템 모니터 스레드 시작
+        self.system_monitor = SystemMonitor(self)
+        self.system_monitor.resource_signal.connect(self.update_resource_status)
+        self.system_monitor.start()
 
         # 정기적으로 메모리 관리 수행
         self.cleanup_timer = QTimer(self)
         self.cleanup_timer.timeout.connect(self.perform_memory_cleanup)
         self.cleanup_timer.start(30000)  # 30초마다 실행
 
+        # UI 응답성을 위한 타이머 추가
+        self.ui_update_timer = QTimer(self)
+        self.ui_update_timer.timeout.connect(self.process_ui_events)
+        self.ui_update_timer.start(100)  # 100ms마다 UI 이벤트 처리
+
+        # 오래된 로그 정리 타이머
+        self.log_cleanup_timer = QTimer(self)
+        self.log_cleanup_timer.timeout.connect(cleanup_old_logs)
+        self.log_cleanup_timer.start(3600000)  # 1시간마다 실행
+        
+        # 초기 로그 정리 수행
+        cleanup_old_logs()
+
+        # 시스템 트레이 아이콘 설정 (필요 시)
+        self.setup_tray_icon()
+        
+        # 주기적으로 메모리 사용량 확인하고 로그에 기록
+        self.memory_check_timer = QTimer(self)
+        self.memory_check_timer.timeout.connect(self.log_memory_usage)
+        self.memory_check_timer.start(300000)  # 5분마다 실행
+        
+        # 시스템 상태 레이블 추가
+        self.system_status_label = QLabel("시스템 상태: 준비")
+        self.system_status_label.setStyleSheet("color: green;")
+
         # 프로그램 종료 시 정리 작업
         QApplication.instance().aboutToQuit.connect(self.on_application_exit)
 
     def split_urls(self, urls, chunks):
-        """URLs를 지정된 chunks 수만큼 분할"""
-        n = len(urls)
-        if n == 0:
+        """URLs를 지정된 chunks 수만큼 분할 - 최적화됨"""
+        if not urls:
             return []
-        if chunks > n:
-            chunks = n
-        size = n // chunks
-        remainder = n % chunks
-        result = []
-        start = 0
-        for i in range(chunks):
-            end = start + size + (1 if i < remainder else 0)
-            result.append(urls[start:end])
-            start = end
+
+        n = len(urls)
+        chunks = min(chunks, n)
+
+        # 최적화된 URL 분배 (CPU 코어 수에 따라 조정)
+        available_cores = min(os.cpu_count() or 4, 8)  # 최대 8개 코어 사용
+        optimal_chunks = min(chunks, available_cores)
+
+        # URL 분할
+        result = [[] for _ in range(optimal_chunks)]
+        for i, url in enumerate(urls):
+            result[i % optimal_chunks].append(url)
+
         return result
+
+    def setup_tray_icon(self):
+        """시스템 트레이 아이콘 설정"""
+        try:
+            if QSystemTrayIcon.isSystemTrayAvailable():
+                # 기본 아이콘 사용
+                icon = QIcon("icon.png")  # 아이콘 파일이 없으면 기본 아이콘 사용
+                
+                # 트레이 아이콘 메뉴 생성
+                tray_menu = QMenu()
+                show_action = tray_menu.addAction("앱 보기")
+                show_action.triggered.connect(self.show)
+                
+                exit_action = tray_menu.addAction("종료")
+                exit_action.triggered.connect(QApplication.quit)
+                
+                # 트레이 아이콘 생성
+                self.tray_icon = QSystemTrayIcon(self)
+                self.tray_icon.setIcon(icon)
+                self.tray_icon.setToolTip("URL 테스트 애플리케이션")
+                self.tray_icon.setContextMenu(tray_menu)
+                self.tray_icon.activated.connect(self.tray_icon_activated)
+                
+                # 트레이 아이콘 표시
+                self.tray_icon.show()
+                
+                logger.info("시스템 트레이 아이콘 설정 완료")
+        except Exception as e:
+            logger.error(f"시스템 트레이 아이콘 설정 오류: {str(e)}")
+
+    def tray_icon_activated(self, reason):
+        """트레이 아이콘 클릭 이벤트"""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.show()
+            self.activateWindow()
+
+    def update_resource_status(self, resources):
+        """시스템 리소스 상태 업데이트"""
+        memory_percent = resources['memory_percent']
+        disk_percent = resources['disk_percent']
+        cpu_percent = resources['cpu_percent']
+        process_memory = resources['process_memory']
+        
+        status_text = f"메모리: {memory_percent:.1f}% | 디스크: {disk_percent:.1f}% | CPU: {cpu_percent:.1f}% | 앱: {process_memory:.1f}MB"
+        
+        # 상태에 따라 색상 변경
+        if memory_percent > 90 or disk_percent > 90 or cpu_percent > 90:
+            self.system_status_label.setStyleSheet("color: red; font-weight: bold;")
+        elif memory_percent > 70 or disk_percent > 70 or cpu_percent > 70:
+            self.system_status_label.setStyleSheet("color: orange;")
+        else:
+            self.system_status_label.setStyleSheet("color: green;")
+            
+        self.system_status_label.setText(status_text)
+
+    def log_memory_usage(self):
+        """메모리 사용량 로그에 기록"""
+        try:
+            # 현재 프로세스의 메모리 사용량 확인
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            memory_mb = memory_info.rss / (1024 * 1024)  # MB 단위
+            
+            # 시스템 메모리 사용량 확인
+            system_memory = psutil.virtual_memory()
+            system_memory_percent = system_memory.percent
+            
+            # 디스크 사용량 확인
+            disk = psutil.disk_usage('/')
+            disk_percent = disk.percent
+            
+            log_message = (f"[{datetime.now()}] 시스템 상태 - "
+                          f"앱 메모리: {memory_mb:.2f}MB, "
+                          f"시스템 메모리: {system_memory_percent}%, "
+                          f"디스크: {disk_percent}%")
+            
+            self.log_message(log_message)
+            logger.info(log_message)
+            
+            # 메모리 사용량이 높을 경우 경고 및 정리
+            if memory_mb > 800 or system_memory_percent > 90:
+                warning_msg = f"[{datetime.now()}] 경고: 높은 메모리 사용량 감지. 정리 작업 수행..."
+                self.log_message(warning_msg)
+                self.perform_memory_cleanup()
+                cleanup_old_logs()
+        except Exception as e:
+            logger.error(f"메모리 사용량 로깅 오류: {str(e)}")
 
     def initUI(self):
         """UI 초기화"""
-        self.setWindowTitle('URL 테스트 애플리케이션')
+        self.setWindowTitle('향상된 URL 테스트 애플리케이션')
         self.setGeometry(100, 100, 800, 600)
         self.setStyleSheet("""
             QWidget {
@@ -684,6 +1118,11 @@ class URLTestApp(QWidget):
         self.debug_mode_checkbox.setChecked(False)
         self.debug_mode_checkbox.setToolTip("체크하면 브라우저가 화면에 표시됩니다. 테스트 디버깅용.")
 
+        # 메모리 관리 옵션 추가
+        self.use_temp_profile_checkbox = QCheckBox("임시 프로필 사용 (메모리 누수 방지)")
+        self.use_temp_profile_checkbox.setChecked(True)
+        self.use_temp_profile_checkbox.setToolTip("각 세션에 임시 Chrome 프로필을 사용하여 캐시 및 메모리 누수를 방지합니다.")
+
         # 프로그레스 바 추가
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
@@ -726,6 +1165,20 @@ class URLTestApp(QWidget):
         """)
         self.force_stop_button.clicked.connect(self.force_stop_test)
         self.force_stop_button.setToolTip("모든 Chrome 및 ChromeDriver 프로세스를 강제 종료합니다.")
+        
+        # 메모리 정리 버튼 추가
+        self.cleanup_button = QPushButton("메모리 정리")
+        self.cleanup_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        self.cleanup_button.clicked.connect(self.manual_memory_cleanup)
+        self.cleanup_button.setToolTip("가비지 컬렉션을 실행하고 오래된 로그 파일을 정리합니다.")
 
         self.output = QTextEdit()
         self.output.setReadOnly(True)
@@ -767,11 +1220,14 @@ class URLTestApp(QWidget):
         form_layout.addWidget(self.parallel_label, 10, 0)
         form_layout.addWidget(self.parallel_input, 10, 1, 1, 3)
         form_layout.addWidget(self.debug_mode_checkbox, 11, 0, 1, 4)
-        form_layout.addWidget(self.progress_bar, 12, 0, 1, 4)
+        form_layout.addWidget(self.use_temp_profile_checkbox, 12, 0, 1, 4)
+        form_layout.addWidget(self.system_status_label, 13, 0, 1, 4)
+        form_layout.addWidget(self.progress_bar, 14, 0, 1, 4)
 
         button_layout = QHBoxLayout()
         button_layout.addWidget(self.start_button)
         button_layout.addWidget(self.clear_button)
+        button_layout.addWidget(self.cleanup_button)
         button_layout.addWidget(self.force_stop_button)
 
         layout.addLayout(form_layout)
@@ -780,32 +1236,81 @@ class URLTestApp(QWidget):
         self.setLayout(layout)
 
     def select_csv_file(self):
-        """CSV 파일 선택"""
+        """CSV 파일 선택 - 개선됨"""
         try:
             file_dialog = QFileDialog()
             file_path, _ = file_dialog.getOpenFileName(self, "CSV 파일 선택", "", "CSV Files (*.csv)")
-            if file_path:
-                # CSV 파일 유효성 검증 추가
-                with open(file_path, 'r', encoding='utf-8-sig') as f:
-                    reader = csv.reader(f)
-                    next(reader)  # 헤더 확인
-                self.csv_file_path = file_path
-                self.csv_file_input.setText(file_path)
-        except UnicodeDecodeError:
-            # UTF-8 디코딩 실패 시 cp949로 시도
-            try:
-                with open(file_path, 'r', encoding='cp949') as f:
-                    reader = csv.reader(f)
-                    next(reader)  # 헤더 확인
-                self.csv_file_path = file_path
-                self.csv_file_input.setText(file_path)
-            except Exception as e:
-                self.log_message(f"CSV 파일 로드 오류: {str(e)}")
-                QMessageBox.critical(self, "오류", f"CSV 파일을 읽을 수 없습니다: {str(e)}")
+            if not file_path:
+                return
+
+            # 파일 크기 확인
+            file_size = os.path.getsize(file_path)
+            if file_size > 10 * 1024 * 1024:  # 10MB 이상
+                reply = QMessageBox.question(
+                    self, '대용량 파일 경고',
+                    "10MB가 넘는 대용량 CSV 파일입니다. 처리하는데 시간이 오래 걸릴 수 있습니다. 계속하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+
+            # 샘플링하여 인코딩 감지 - 대용량 파일 처리 최적화
+            encoding = self.detect_csv_encoding(file_path)
+            if not encoding:
+                QMessageBox.critical(self, "오류", "CSV 파일 인코딩을 감지할 수 없습니다.")
+                return
+
+            # 헤더만 읽어 확인
+            with open(file_path, 'r', encoding=encoding) as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                if not header:
+                    QMessageBox.critical(self, "오류", "CSV 파일에 헤더가 없거나 빈 파일입니다.")
+                    return
+
+                # 미리보기 표시
+                preview_rows = []
+                for _ in range(5):  # 5개 행만 미리보기
+                    row = next(reader, None)
+                    if row:
+                        preview_rows.append(row)
+                    else:
+                        break
+
+            # CSV 파일 저장
+            self.csv_file_path = file_path
+            self.csv_file_input.setText(file_path)
+            self.csv_encoding = encoding
+
+            # 미리보기 메시지
+            preview = f"CSV 파일이 로드되었습니다. 인코딩: {encoding}\n"
+            preview += f"헤더: {', '.join(header)}\n"
+            preview += f"{len(preview_rows)}개 행 미리보기: {preview_rows}"
+            self.log_message(preview)
+
         except Exception as e:
             self.log_message(f"CSV 파일 로드 오류: {str(e)}")
             QMessageBox.critical(self, "오류", f"CSV 파일을 읽을 수 없습니다: {str(e)}")
 
+    def detect_csv_encoding(self, file_path):
+        """CSV 파일 인코딩 감지 - 최적화됨"""
+        encodings = ['utf-8-sig', 'utf-8', 'cp949', 'euc-kr']
+
+        # 파일의 처음 4KB만 읽어 인코딩 탐지
+        sample_size = min(os.path.getsize(file_path), 4096)
+
+        with open(file_path, 'rb') as f:
+            raw_data = f.read(sample_size)
+
+        for enc in encodings:
+            try:
+                raw_data.decode(enc)
+                return enc
+            except UnicodeDecodeError:
+                continue
+
+        return None
+        
     def log_message(self, message):
         """UI에 로그 메시지 추가"""
         self.output.append(message)
@@ -826,6 +1331,13 @@ class URLTestApp(QWidget):
                     writer = csv.writer(file)
                     writer.writerow([self.log_count] + log_data)
                 self.log_count += 1
+                
+                # 로그 파일 크기 확인
+                if os.path.getsize(self.log_filename) > MAX_LOG_SIZE_MB * 1024 * 1024:
+                    # 새 로그 파일 생성
+                    self.log_filename = get_log_filename()
+                    self.log_count = 1
+                    self.log_message(f"로그 파일 크기 제한 도달. 새 로그 파일 생성: {self.log_filename}")
         except Exception as e:
             logger.error(f"CSV 로깅 오류: {str(e)}")
             # 최신 로그 파일을 다시 생성
@@ -837,6 +1349,44 @@ class URLTestApp(QWidget):
             self.start_test()
         else:
             self.stop_test()
+            
+    def manual_memory_cleanup(self):
+        """수동 메모리 정리"""
+        try:
+            self.log_message(f"[{datetime.now()}] 수동 메모리 정리 시작...")
+            
+            # 가비지 컬렉션 강제 실행
+            gc.collect()
+            
+            # 오래된 로그 파일 정리
+            cleanup_old_logs()
+            
+            # Chrome 임시 프로필 정리
+            cleanup_temp_profiles()
+            
+            # 메모리 통계 출력
+            process = psutil.Process(os.getpid())
+            memory_before = process.memory_info().rss / (1024 * 1024)
+            
+            # 시스템 메모리 캐시 정리 시도 (Windows)
+            if sys.platform == 'win32':
+                try:
+                    import ctypes
+                    ctypes.windll.kernel32.SetProcessWorkingSetSize(-1, -1)
+                except Exception as e:
+                    logger.error(f"시스템 메모리 캐시 정리 오류: {str(e)}")
+            
+            # 정리 후 메모리 확인
+            memory_after = process.memory_info().rss / (1024 * 1024)
+            memory_freed = max(0, memory_before - memory_after)
+            
+            self.log_message(f"[{datetime.now()}] 메모리 정리 완료. 확보한 메모리: {memory_freed:.2f} MB")
+            self.log_message(f"[{datetime.now()}] 현재 메모리 사용량: {memory_after:.2f} MB")
+            
+            return True
+        except Exception as e:
+            self.log_message(f"[{datetime.now()}] 메모리 정리 중 오류 발생: {str(e)}")
+            return False
 
     def start_test(self):
         """테스트 시작"""
@@ -847,7 +1397,7 @@ class URLTestApp(QWidget):
         # CSV 파일에서 URL 정보 읽어오기
         if self.csv_checkbox.isChecked() and self.csv_file_path:
             try:
-                with open(self.csv_file_path, 'r', encoding='utf-8-sig') as file:
+                with open(self.csv_file_path, 'r', encoding=self.csv_encoding) as file:
                     reader = csv.reader(file)
                     try:
                         next(reader)  # 헤더 행 건너뛰기
@@ -858,23 +1408,6 @@ class URLTestApp(QWidget):
                                     sites.append(url)
                     except StopIteration:
                         pass  # 비어있는 CSV 파일 처리
-            except UnicodeDecodeError:
-                # UTF-8 디코딩 실패 시 cp949로 시도
-                try:
-                    with open(self.csv_file_path, 'r', encoding='cp949') as file:
-                        reader = csv.reader(file)
-                        try:
-                            next(reader)  # 헤더 행 건너뛰기
-                            for row in reader:
-                                if len(row) >= 3:
-                                    url = row[2].strip()
-                                    if url:
-                                        sites.append(url)
-                        except StopIteration:
-                            pass  # 비어있는 CSV 파일 처리
-                except Exception as e:
-                    self.log_message(f"CSV 파일 읽기 오류: {str(e)}")
-                    return
             except Exception as e:
                 self.log_message(f"CSV 파일 읽기 오류: {str(e)}")
                 return
@@ -883,6 +1416,20 @@ class URLTestApp(QWidget):
             self.log_message("테스트할 URL이 없습니다.")
             QMessageBox.warning(self, "경고", "테스트할 URL이 없습니다.")
             return
+            
+        # 시스템 리소스 확인
+        if not check_system_resources():
+            reply = QMessageBox.question(
+                self, '시스템 리소스 경고',
+                "시스템 리소스가 부족합니다. 테스트를 계속하시겠습니까?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.No:
+                self.log_message("시스템 리소스 부족으로 테스트가 취소되었습니다.")
+                return
+                
+        # 메모리 정리
+        self.manual_memory_cleanup()
 
         # 기존에 실행 중인 스레드가 있으면 정리
         self.stop_test(silent=True)
@@ -915,10 +1462,14 @@ class URLTestApp(QWidget):
                 self.block_mode_input.currentIndex(),
                 self.debug_mode_checkbox.isChecked()
             )
+            # 임시 프로필 사용 설정
+            thread.use_temp_profile = self.use_temp_profile_checkbox.isChecked()
+            
             thread.log_signal.connect(self.log_message)
             thread.csv_log_signal.connect(self.log_to_csv)
             thread.finished_signal.connect(self.check_all_threads_finished)
             thread.progress_signal.connect(self.update_progress)
+            thread.error_signal.connect(self.handle_thread_error)
             thread.start()
             self.test_threads.append(thread)
 
@@ -935,7 +1486,20 @@ class URLTestApp(QWidget):
 
         # 버튼 활성화/비활성화 상태 변경
         self.force_stop_button.setEnabled(True)
-
+        
+        # 트레이 아이콘 알림
+        if self.tray_icon:
+            self.tray_icon.showMessage("URL 테스트 시작", f"{len(sites)}개 URL 테스트가 시작되었습니다.", 3000)
+            
+    def handle_thread_error(self, error_message):
+        """스레드 오류 처리"""
+        self.log_message(f"[{datetime.now()}] 오류 발생: {error_message}")
+        
+        if "메모리" in error_message.lower() or "memory" in error_message.lower():
+            # 메모리 관련 오류일 경우 자동 정리 시도
+            self.log_message("메모리 오류 감지. 자동 정리 시도 중...")
+            self.manual_memory_cleanup()
+            
     def update_progress(self, value):
         """진행 상황 업데이트"""
         # 모든 스레드의 진행률 평균을 계산
@@ -1012,7 +1576,11 @@ class URLTestApp(QWidget):
 
             self.force_stop_button.setEnabled(True)
             self.progress_bar.setValue(0)
-
+            
+            # 트레이 아이콘 알림
+            if self.tray_icon and not silent:
+                self.tray_icon.showMessage("URL 테스트 종료", "테스트가 중지되었습니다.", 3000)
+                
     def force_stop_test(self):
         """테스트 강제 종료 (모든 크롬 프로세스 포함)"""
         # 사용자에게 작업을 확인
@@ -1050,6 +1618,9 @@ class URLTestApp(QWidget):
             """)
             self.progress_bar.setValue(0)
             self.log_message("모든 프로세스가 강제 종료되었습니다.")
+            
+            # 메모리 정리
+            self.manual_memory_cleanup()
 
     def test_finished(self):
         """테스트 완료 처리"""
@@ -1066,31 +1637,114 @@ class URLTestApp(QWidget):
         self.progress_bar.setValue(100)
         self.log_message("테스트가 완료되었습니다.")
         self.test_threads = []
+        
+        # 완료 후 메모리 정리
+        self.manual_memory_cleanup()
+        
+        # 트레이 아이콘 알림
+        if self.tray_icon:
+            self.tray_icon.showMessage("URL 테스트 완료", "모든 테스트가 완료되었습니다.", 3000)
 
     def perform_memory_cleanup(self):
         """주기적인 메모리 정리 작업"""
-        import gc
+        # 기본 가비지 컬렉션
         gc.collect()
+        
+        # 로그 파일 크기 확인
+        if hasattr(self, 'log_filename') and os.path.exists(self.log_filename):
+            if os.path.getsize(self.log_filename) > MAX_LOG_SIZE_MB * 1024 * 1024:
+                # 새 로그 파일 생성
+                old_filename = self.log_filename
+                self.log_filename = get_log_filename()
+                self.log_count = 1
+                logger.info(f"로그 파일 크기 제한 초과. 새 파일 생성: {old_filename} → {self.log_filename}")
+
+    def process_ui_events(self):
+        """UI 이벤트 처리 - 응답성 개선"""
+        QApplication.processEvents()
 
     def on_application_exit(self):
         """애플리케이션 종료 시 정리 작업"""
         # 진행 중인 스레드 종료
         self.stop_test(silent=True)
+        
+        # 시스템 모니터 스레드 종료
+        if hasattr(self, 'system_monitor') and self.system_monitor:
+            self.system_monitor.stop()
 
         # 크롬 드라이버 및 크롬 프로세스 강제 종료
         kill_all_chrome_drivers()
+        
+        # 임시 파일 정리
+        cleanup_temp_profiles()
 
         logger.info("애플리케이션이 정상적으로 종료되었습니다.")
+        
+    def closeEvent(self, event):
+        """창 닫기 이벤트 처리"""
+        # 시스템 트레이 아이콘이 있을 경우
+        if self.tray_icon and self.tray_icon.isVisible():
+            # 테스트가 실행 중인지 확인
+            if self.test_threads and any(thread.isRunning() for thread in self.test_threads):
+                reply = QMessageBox.question(
+                    self, '최소화 확인',
+                    "테스트가 진행 중입니다. 창을 닫는 대신 시스템 트레이로 최소화하시겠습니까?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+                )
+                
+                if reply == QMessageBox.Yes:
+                    self.hide()
+                    event.ignore()
+                    # 트레이 아이콘 알림
+                    self.tray_icon.showMessage(
+                        "URL 테스트 계속 실행 중", 
+                        "애플리케이션이 시스템 트레이에서 계속 실행됩니다.", 
+                        3000
+                    )
+                    return
+            
+        # 종료 확인
+        reply = QMessageBox.question(
+            self, '종료 확인',
+            "정말로 종료하시겠습니까?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            # 트레이 아이콘 제거
+            if self.tray_icon:
+                self.tray_icon.hide()
+            # 종료 전 정리 작업
+            self.on_application_exit()
+            event.accept()
+        else:
+            event.ignore()
 
 
 if __name__ == '__main__':
     try:
-        # Windows에서 콘솔 창이 닫히지 않게 하기 위한 핸들러
-        kernel32 = ctypes.WinDLL('kernel32')
-        kernel32.SetConsoleCtrlHandler(lambda event_type: True, True)
+        # Windows에서 콘솔 창이 닫히지 않게 하기 위한 핸들러 (개선됨)
+        if sys.platform == 'win32':
+            try:
+                kernel32 = ctypes.WinDLL('kernel32')
+                handler = ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_uint)(lambda event_type: True)
+                kernel32.SetConsoleCtrlHandler(handler, True)
+                logger.info("콘솔 컨트롤 핸들러가 등록되었습니다.")
+            except Exception as e:
+                logger.warning(f"콘솔 컨트롤 핸들러 등록 실패: {str(e)}")
+
+        # 시스템 정보 로깅
+        logger.info(f"시스템: {sys.platform}, Python: {sys.version}")
+        logger.info(f"CPU 코어: {os.cpu_count()}, 메모리: {psutil.virtual_memory().total / (1024 * 1024 * 1024):.2f} GB")
 
         # 프로그램 시작 시 크롬 드라이버 정리
         kill_all_chrome_drivers()
+        
+        # 시작 시 임시 디렉토리 정리
+        cleanup_temp_profiles()
+        
+        # 시작 시 로그 정리
+        cleanup_old_logs()
 
         app = QApplication(sys.argv)
         ex = URLTestApp()
