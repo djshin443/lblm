@@ -1,0 +1,693 @@
+import sys
+import os
+import requests
+import time
+import logging
+import csv
+from urllib.parse import urlparse, unquote
+from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QGridLayout, QLabel, QLineEdit, QPushButton, QSpinBox, \
+    QComboBox, QTextEdit, QHBoxLayout, QFileDialog, QCheckBox
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QColor, QPalette
+import urllib3
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger()
+
+# InsecureRequestWarning 경고를 무시합니다.
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+def get_chrome_version():
+    try:
+        # Windows의 경우 레지스트리에서 크롬 버전 확인
+        if sys.platform == 'win32':
+            import winreg
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Google\Chrome\BLBeacon')
+            version, _ = winreg.QueryValueEx(key, 'version')
+            return version
+    except Exception as e:
+        logger.error(f"Failed to get Chrome version from registry: {str(e)}")
+        try:
+            # 레지스트리에서 실패할 경우 기본 경로에서 확인 시도
+            paths = [
+                r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+                os.path.expandvars(r'%LocalAppData%\Google\Chrome\Application\chrome.exe')
+            ]
+
+            from win32com.client import Dispatch
+            parser = Dispatch('Scripting.FileSystemObject')
+
+            for path in paths:
+                if os.path.exists(path):
+                    version = parser.GetFileVersion(path)
+                    return version
+        except Exception as e:
+            logger.error(f"Failed to get Chrome version from file: {str(e)}")
+
+    return None
+
+
+def setup_driver():
+    options = Options()
+
+    try:
+        # 1. 크롬 버전 확인
+        chrome_version = get_chrome_version()
+        if not chrome_version:
+            raise Exception("Could not determine Chrome version")
+
+        logger.info(f"Detected Chrome version: {chrome_version}")
+        major_version = chrome_version.split('.')[0]  # 메이저 버전만 추출
+
+        # 2. 크롬드라이버 다운로드 URL 구성
+        driver_version = chrome_version  # 크롬 버전과 동일한 드라이버 버전 사용
+        base_url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing"
+        download_url = f"{base_url}/{chrome_version}/win64/chromedriver-win64.zip"
+
+        chrome_driver_path = os.path.join(os.getcwd(), "chromedriver.exe")
+
+        # 3. 드라이버가 없거나 버전이 다른 경우 다운로드
+        if not os.path.exists(chrome_driver_path):
+            import urllib.request
+            import zipfile
+
+            logger.info(f"Downloading ChromeDriver version {driver_version}")
+            zip_path = "chromedriver.zip"
+
+            # 드라이버 zip 파일 다운로드
+            urllib.request.urlretrieve(download_url, zip_path)
+
+            # zip 파일 압축 해제
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for file in zip_ref.namelist():
+                    if file.endswith('chromedriver.exe'):
+                        zip_ref.extract(file)
+                        if os.path.exists('chromedriver-win64/chromedriver.exe'):
+                            import shutil
+                            shutil.move('chromedriver-win64/chromedriver.exe', 'chromedriver.exe')
+                            shutil.rmtree('chromedriver-win64')
+
+            # 임시 파일 삭제
+            os.remove(zip_path)
+
+            logger.info("ChromeDriver downloaded successfully")
+
+        # 4. 옵션 설정
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument('--disable-infobars')
+        options.add_argument('--start-maximized')
+        options.add_argument('--disable-web-security')
+        options.add_argument('--allow-running-insecure-content')
+        options.add_argument('--log-level=3')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--enable-unsafe-swiftshader')
+        options.add_argument('--disable-software-rasterizer')
+        options.add_argument('--proxy-bypass-list=*')
+        options.add_argument('--ignore-certificate-errors')
+
+        # 5. Service 객체 생성 및 드라이버 초기화
+        service = ChromeService(chrome_driver_path)
+        driver = webdriver.Chrome(service=service, options=options)
+        driver.get("about:blank")
+        logger.info("ChromeDriver successfully initialized")
+        return driver
+
+    except Exception as e:
+        detailed_error = f"Driver setup failed: {str(e)}\n"
+        detailed_error += f"Chrome options: {options.arguments}\n"
+        detailed_error += f"System: {sys.platform}\n"
+        detailed_error += f"Python version: {sys.version}"
+        logger.error(detailed_error)
+        raise Exception(f"Failed to initialize ChromeDriver: {str(e)}")
+
+def get_url_with_protocol(url):
+    if not url.strip():  # 빈 URL 체크 추가
+        return None, "Empty URL provided"
+    try:
+        parsed_url = urlparse(url)
+        if parsed_url.scheme:
+            return url, None
+        else:
+            try:
+                response = requests.get(f"https://{url}", timeout=5)
+                response.raise_for_status()
+                return f"https://{url}", None
+            except requests.exceptions.RequestException:
+                return f"http://{url}", None
+    except Exception as e:
+        error_msg = f"Invalid URL or IP address: {url}. Error: {str(e)}"
+        logger.error(error_msg)
+        return None, error_msg
+
+
+def get_log_filename():
+    return f"로그_{datetime.now().strftime('%y%m%d%H')}.csv"
+
+
+class URLTestThread(QThread):
+    log_signal = pyqtSignal(str)  # QString 대신 str 사용
+    csv_log_signal = pyqtSignal(list)  # QList 대신 list 사용
+    finished_signal = pyqtSignal()
+
+    def __init__(self, sites, interval, count, browser_option, logging_option, number_option, block_phrase,
+                 console_logging_option, block_mode):
+        super().__init__()
+        self.sites = sites
+        self.interval = interval
+        self.count = count
+        self.browser_option = browser_option
+        self.logging_option = logging_option
+        self.number_option = number_option
+        self.block_phrase = block_phrase
+        self.console_logging_option = console_logging_option
+        self.block_mode = block_mode
+        self.running = True
+        self.driver = None
+
+    def run(self):
+        iteration = 0
+        self.driver = None
+
+        while self.running and (self.count == 0 or iteration < self.count):
+            for site in self.sites:
+                site_with_protocol, error_msg = get_url_with_protocol(site)
+                if error_msg:
+                    self.log_signal.emit(f"[{datetime.now()}] Error: {error_msg}")
+                    self.csv_log_signal.emit([site, "오류", error_msg])
+                    continue
+
+                # 브라우저가 실행 중인지 확인하고, 종료되었다면 재시작
+                if self.browser_option == 1:  # 한 번만 열기 옵션일 때
+                    try:
+                        if self.driver is not None:
+                            # 브라우저가 살아있는지 테스트
+                            self.driver.current_url
+                    except Exception as e:
+                        self.log_signal.emit(f"[{datetime.now()}] 브라우저가 종료됨, 재시작 시도")
+                        try:
+                            if self.driver is not None:
+                                self.driver.quit()
+                        except:
+                            pass
+                        self.driver = None
+                        time.sleep(1)  # 재시작 전 잠시 대기
+
+                # 브라우저가 없으면 새로 시작
+                if self.browser_option == 0 or self.driver is None:
+                    try:
+                        self.driver = setup_driver()
+                    except Exception as e:
+                        self.log_signal.emit(f"[{datetime.now()}] 드라이버 설정 오류: {str(e)}")
+                        time.sleep(self.interval)
+                        continue
+
+                if self.number_option == 1:
+                    url = f"{site_with_protocol}/{iteration + 1}"
+                else:
+                    url = site_with_protocol
+
+                try:
+                    self.driver.set_page_load_timeout(30)  # 페이지 로드 타임아웃 설정
+                    self.driver.get(url)
+
+                    # 페이지 로드 완료 대기
+                    WebDriverWait(self.driver, 30).until(
+                        EC.presence_of_element_located((By.TAG_NAME, "body"))
+                    )
+
+                    time.sleep(self.interval)
+
+                    if self.block_mode == 0:  # 인라인 모드
+                        iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                        if len(iframes) > 0:
+                            iframe_src = iframes[0].get_attribute('src')
+                            decoded_src = unquote(iframe_src)
+                            if self.block_phrase in decoded_src:
+                                log_message = f"[{datetime.now()}] URL: {url} - 차단됨 (인라인)"
+                                if self.console_logging_option == 0 or self.console_logging_option == 3:
+                                    self.log_signal.emit(log_message)
+                                # 차단된 경우만 또는 모두 로그일 때만 CSV 로깅
+                                if self.console_logging_option == 0 or self.console_logging_option == 3:
+                                    self.csv_log_signal.emit([url, "차단됨 (인라인)", ""])
+                            else:
+                                log_message = f"[{datetime.now()}] URL: {url} - 차단되지 않음 (인라인)"
+                                if self.console_logging_option == 1 or self.console_logging_option == 3:
+                                    self.log_signal.emit(log_message)
+                                # 차단되지 않은 경우만 또는 모두 로그일 때만 CSV 로깅
+                                if self.console_logging_option == 1 or self.console_logging_option == 3:
+                                    self.csv_log_signal.emit([url, "차단되지 않음 (인라인)", ""])
+                        else:
+                            log_message = f"[{datetime.now()}] URL: {url} - 차단되지 않음 (인라인)"
+                            if self.console_logging_option == 1 or self.console_logging_option == 3:
+                                self.log_signal.emit(log_message)
+                            # 차단되지 않은 경우만 또는 모두 로그일 때만 CSV 로깅
+                            if self.console_logging_option == 1 or self.console_logging_option == 3:
+                                self.csv_log_signal.emit([url, "차단되지 않음 (인라인)", ""])
+
+                except TimeoutException:
+                    log_message = f"[{datetime.now()}] URL: {url} - 30초 동안 로딩 없음"
+                    self.log_signal.emit(log_message)
+                    self.csv_log_signal.emit([url, "30초 동안 로딩 없음", ""])
+                    continue  # 다음 URL로 넘어감
+
+                except Exception as e:
+                    if self.block_mode == 0:
+                        log_message = f"[{datetime.now()}] URL: {url} - 접속 안됨 (인라인)"
+                        self.csv_log_signal.emit([url, "접속 안됨 (인라인)", ""])
+                    else:
+                        log_message = f"[{datetime.now()}] URL: {url} - 접속 안됨 (미러링)"
+                        self.csv_log_signal.emit([url, "접속 안됨 (미러링)", ""])
+
+                    self.log_signal.emit(log_message)
+
+                    if self.browser_option == 0:
+                        if self.driver is not None:  # self.driver가 None인지 확인
+                            self.driver.quit()
+                        self.driver = None
+
+                if self.browser_option == 0:
+                    if self.driver is not None:  # self.driver가 None인지 확인
+                        self.driver.quit()
+                    self.driver = None
+
+            iteration += 1
+
+        if self.browser_option == 1 and self.driver is not None:
+            self.driver.quit()
+
+        self.finished_signal.emit()
+
+    def stop(self):
+        self.running = False
+        if self.driver is not None:
+            try:
+                self.driver.quit()
+            except Exception as e:
+                logger.error(f"Failed to quit driver: {str(e)}")
+            self.driver = None
+        self.quit()
+        self.wait(5000)  # 스레드가 종료될 때까지 최대 5초 기다림
+
+
+class URLTestApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+        self.log_filename = get_log_filename()
+        self.log_count = 1
+        self.test_thread = None
+        self.csv_file_path = None  # CSV 파일 경로를 저장할 변수 추가
+
+    def split_urls(self, urls, chunks):
+        """URLs를 지정된 chunks 수만큼 분할"""
+        n = len(urls)
+        if n == 0:
+            return []
+        if chunks > n:
+            chunks = n
+        size = n // chunks
+        remainder = n % chunks
+        result = []
+        start = 0
+        for i in range(chunks):
+            end = start + size + (1 if i < remainder else 0)
+            result.append(urls[start:end])
+            start = end
+        return result
+
+    def initUI(self):
+        self.setWindowTitle('URL 테스트 애플리케이션')
+        self.setGeometry(100, 100, 800, 600)
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2e2e2e;
+                color: white;
+            }
+            QLabel {
+                font-size: 14px;
+                font-family: Arial, sans-serif;
+            }
+            QLineEdit, QSpinBox, QComboBox {
+                font-size: 14px;
+                font-family: Arial, sans-serif;
+                border: 1px solid #3a3a3a;
+                border-radius: 5px;
+                padding: 5px;
+                background-color: #444;
+                color: white;
+            }
+            QPushButton {
+                font-size: 14px;
+                font-family: Arial, sans-serif;
+                border: 1px solid #3a3a3a;
+                border-radius: 5px;
+                padding: 5px;
+                color: white;
+            }
+            QTextEdit {
+                font-size: 14px;
+                font-family: Arial, sans-serif;
+                background-color: #1e1e1e;
+                border: 1px solid #3a3a3a;
+                border-radius: 5px;
+                padding: 10px;
+                color: white;
+            }
+        """)
+
+        layout = QVBoxLayout()
+        form_layout = QGridLayout()
+        form_layout.setSpacing(10)  # 입력 필드 간의 간격 설정
+
+        self.site_checkbox = QCheckBox("사이트")
+        self.site_checkbox.setChecked(True)
+        self.site_input = QLineEdit()
+        self.site_input.setPlaceholderText("예: example1.com,example2.com,example3.com")
+        self.site_input.setText("soosantest.com")
+
+        self.csv_checkbox = QCheckBox("CSV 파일")
+        self.csv_file_input = QLineEdit()
+        self.csv_file_input.setReadOnly(True)
+        self.csv_file_button = QPushButton("파일 선택")
+        self.csv_file_button.setStyleSheet("""
+            QPushButton {
+                background-color: #5a5a5a;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+        """)
+        self.csv_file_button.clicked.connect(self.select_csv_file)
+
+        self.interval_label = QLabel("간격 (초):")
+        self.interval_input = QSpinBox()
+        self.interval_input.setValue(1)
+        self.interval_input.setToolTip("각 테스트 사이의 시간 간격을 설정합니다.")
+
+        self.count_label = QLabel("반복 횟수 (0은 무한 반복):")
+        self.count_input = QSpinBox()
+        self.count_input.setRange(0, 65535)
+        self.count_input.setValue(1)
+        self.count_input.setToolTip("테스트를 반복할 횟수를 설정합니다. 0으로 설정하면 무한 반복됩니다.")
+
+        self.browser_option_label = QLabel("브라우저 옵션:")
+        self.browser_option_input = QComboBox()
+        self.browser_option_input.addItems(["매번 열고 닫기", "한 번만 열기"])
+        self.browser_option_input.setToolTip("각 테스트마다 브라우저를 열고 닫을지, 한 번만 열고 계속 사용할지 선택합니다.")
+
+        self.logging_option_label = QLabel("로그 옵션:")
+        self.logging_option_input = QComboBox()
+        self.logging_option_input.addItems(["로그 비활성화", "로그 활성화"])
+        self.logging_option_input.setToolTip("테스트 결과를 로그 파일에 기록할지 선택합니다.")
+
+        self.number_option_label = QLabel("숫자 옵션:")
+        self.number_option_input = QComboBox()
+        self.number_option_input.addItems(["사용 안 함", "사용"])
+        self.number_option_input.setToolTip("각 테스트 반복 시 URL 경로에 숫자를 추가할지 선택합니다.")
+
+        self.block_phrase_label = QLabel("차단 문구:")
+        self.block_phrase_input = QLineEdit()
+        self.block_phrase_input.setPlaceholderText("예: QA/DB_Block_Test")
+        self.block_phrase_input.setToolTip("iframe URL에 차단 여부를 확인할 문구를 입력합니다.")
+
+        self.console_logging_label = QLabel("콘솔 로그 옵션:")
+        self.console_logging_input = QComboBox()
+        self.console_logging_input.addItems(["차단된 경우만", "차단되지 않은 경우만", "로그 없음", "모두 로그"])
+        self.console_logging_input.setToolTip("콘솔에 어떤 로그를 표시할지 선택합니다.")
+
+        self.block_mode_label = QLabel("차단 확인 모드:")
+        self.block_mode_input = QComboBox()
+        self.block_mode_input.addItems(["인라인", "미러링"])
+        self.block_mode_input.setToolTip("차단 확인 모드를 선택합니다.")
+
+        # 브라우저 병렬 처리 옵션 추가 (block_mode_input 선언 후에 추가)
+        self.parallel_label = QLabel("병렬 처리 개수:")
+        self.parallel_input = QSpinBox()
+        self.parallel_input.setRange(1, 10)  # 최대 10개 쓰레드까지 허용
+        self.parallel_input.setValue(1)
+        self.parallel_input.setToolTip("동시에 실행할 브라우저 개수를 설정합니다.")
+
+        self.start_button = QPushButton("시작")
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #5a5a5a;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+        """)
+        self.start_button.clicked.connect(self.toggle_test)
+
+        self.clear_button = QPushButton("로그 지우기")
+        self.clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #5a5a5a;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+        """)
+        self.clear_button.clicked.connect(self.clear_log)
+
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
+
+        # UI 요소의 최소 너비 설정
+        min_width = 300
+        self.site_input.setMinimumWidth(min_width)
+        self.csv_file_input.setMinimumWidth(min_width)
+        self.interval_input.setMinimumWidth(min_width)
+        self.count_input.setMinimumWidth(min_width)
+        self.browser_option_input.setMinimumWidth(min_width)
+        self.logging_option_input.setMinimumWidth(min_width)
+        self.number_option_input.setMinimumWidth(min_width)
+        self.block_phrase_input.setMinimumWidth(min_width)
+        self.console_logging_input.setMinimumWidth(min_width)
+        self.block_mode_input.setMinimumWidth(min_width)
+
+        form_layout.addWidget(self.site_checkbox, 0, 0)
+        form_layout.addWidget(self.site_input, 0, 1, 1, 3)
+        form_layout.addWidget(self.csv_checkbox, 1, 0)
+        form_layout.addWidget(self.csv_file_input, 1, 1, 1, 2)
+        form_layout.addWidget(self.csv_file_button, 1, 3)
+        form_layout.addWidget(self.interval_label, 2, 0)
+        form_layout.addWidget(self.interval_input, 2, 1, 1, 3)
+        form_layout.addWidget(self.count_label, 3, 0)
+        form_layout.addWidget(self.count_input, 3, 1, 1, 3)
+        form_layout.addWidget(self.browser_option_label, 4, 0)
+        form_layout.addWidget(self.browser_option_input, 4, 1, 1, 3)
+        form_layout.addWidget(self.logging_option_label, 5, 0)
+        form_layout.addWidget(self.logging_option_input, 5, 1, 1, 3)
+        form_layout.addWidget(self.number_option_label, 6, 0)
+        form_layout.addWidget(self.number_option_input, 6, 1, 1, 3)
+        form_layout.addWidget(self.block_phrase_label, 7, 0)
+        form_layout.addWidget(self.block_phrase_input, 7, 1, 1, 3)
+        form_layout.addWidget(self.console_logging_label, 8, 0)
+        form_layout.addWidget(self.console_logging_input, 8, 1, 1, 3)
+        form_layout.addWidget(self.block_mode_label, 9, 0)
+        form_layout.addWidget(self.block_mode_input, 9, 1, 1, 3)
+        form_layout.addWidget(self.parallel_label, 10, 0)
+        form_layout.addWidget(self.parallel_input, 10, 1, 1, 3)
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.start_button)
+        button_layout.addWidget(self.clear_button)
+
+        layout.addLayout(form_layout)
+        layout.addLayout(button_layout)
+        layout.addWidget(self.output)
+        self.setLayout(layout)
+
+    def select_csv_file(self):
+        try:
+            file_dialog = QFileDialog()
+            file_path, _ = file_dialog.getOpenFileName(self, "CSV 파일 선택", "", "CSV Files (*.csv)")
+            if file_path:
+                # CSV 파일 유효성 검증 추가
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    next(reader)  # 헤더 확인
+                self.csv_file_path = file_path
+                self.csv_file_input.setText(file_path)
+        except Exception as e:
+            self.log_message(f"CSV 파일 로드 오류: {str(e)}")
+
+    def log_message(self, message):
+        self.output.append(message)
+
+    def clear_log(self):
+        self.output.clear()
+
+    def log_to_csv(self, log_data):
+        if self.logging_option_input.currentIndex() == 1:  # 로그 활성화
+            with open(self.log_filename, 'a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([self.log_count] + log_data)
+            self.log_count += 1
+
+    def toggle_test(self):
+        if self.test_thread is None or not self.test_thread.isRunning():
+            self.start_test()
+        else:
+            self.stop_test()
+
+    def start_test(self):
+        sites = []
+        if self.site_checkbox.isChecked():
+            sites = [site.strip() for site in self.site_input.text().split(",") if site.strip()]
+
+        # CSV 파일에서 URL 정보 읽어오기
+        if self.csv_checkbox.isChecked() and self.csv_file_path:
+            with open(self.csv_file_path, 'r', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                next(reader)  # 헤더 행 건너뛰기
+                for row in reader:
+                    if len(row) >= 3:
+                        url = row[2].strip()
+                        if url:
+                            sites.append(url)
+
+        if not sites:
+            self.log_message("테스트할 URL이 없습니다.")
+            return
+
+        parallel_count = self.parallel_input.value()
+        url_chunks = self.split_urls(sites, parallel_count)
+
+        self.test_threads = []
+        for chunk in url_chunks:
+            thread = URLTestThread(
+                chunk,
+                self.interval_input.value(),
+                self.count_input.value(),
+                self.browser_option_input.currentIndex(),
+                self.logging_option_input.currentIndex(),
+                self.number_option_input.currentIndex(),
+                self.block_phrase_input.text() or "QA/DB_Block_Test",
+                self.console_logging_input.currentIndex(),
+                self.block_mode_input.currentIndex()
+            )
+            thread.log_signal.connect(self.log_message)
+            thread.csv_log_signal.connect(self.log_to_csv)
+            thread.finished_signal.connect(self.check_all_threads_finished)
+            thread.start()
+            self.test_threads.append(thread)
+
+        self.start_button.setText("종료")
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+
+    def check_all_threads_finished(self):
+        if all(not thread.isRunning() for thread in self.test_threads):
+            self.test_finished()
+
+    def stop_test(self):
+        if hasattr(self, 'test_threads') and self.test_threads:
+            self.log_message("종료 중... 잠시 기다려주세요.")
+
+            # 모든 스레드에 종료 신호를 보냄
+            for thread in self.test_threads:
+                thread.stop()
+
+            # 모든 스레드가 종료될 때까지 대기
+            all_stopped = False
+            while not all_stopped:
+                all_stopped = True
+                for thread in self.test_threads:
+                    if thread.isRunning():
+                        QApplication.processEvents()  # GUI 이벤트 처리
+                        thread.quit()
+                        thread.wait(100)  # 스레드가 종료되기를 잠시 기다림
+                        all_stopped = False
+
+            # 모든 스레드 종료 후 UI 상태 업데이트
+            self.start_button.setText("시작")
+            self.start_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #5a5a5a;
+                    color: white;
+                }
+                QPushButton:hover {
+                    background-color: #7a7a7a;
+                }
+            """)
+            self.log_message("테스트가 중지되었습니다.")
+            self.test_threads.clear()  # 모든 스레드 리스트 클리어
+
+            # Now attempt to shut down drivers and wait for threads
+            for thread in self.test_threads:
+                try:
+                    if hasattr(thread, 'driver') and thread.driver is not None:
+                        thread.driver.quit()
+                        thread.driver = None
+                except Exception as e:
+                    self.log_message(f"드라이버 종료 오류: {str(e)}")
+
+                # Use thread.stop() which already has a proper shutdown sequence
+                thread.stop()
+
+            # Wait a bit for threads to process the quit signals
+            QApplication.processEvents()
+            time.sleep(1)
+
+            # Force terminate any remaining threads
+            for thread in self.test_threads:
+                if thread.isRunning():
+                    thread.terminate()
+                    thread.wait(1000)  # Wait up to 1 second for it to terminate
+
+            self.test_threads = []
+
+            self.start_button.setText("시작")
+            self.start_button.setStyleSheet("""
+                QPushButton {
+                    background-color: #5a5a5a;
+                    color: white;
+                }
+                QPushButton:hover {
+                    background-color: #7a7a7a;
+                }
+            """)
+            self.log_message("테스트가 중지되었습니다.")
+
+    def test_finished(self):
+        self.start_button.setText("시작")
+        self.start_button.setStyleSheet("""
+            QPushButton {
+                background-color: #5a5a5a;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #7a7a7a;
+            }
+        """)
+        self.test_threads = []  # test_thread 대신 test_threads를 초기화
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    ex = URLTestApp()
+    ex.show()
+    sys.exit(app.exec_())
