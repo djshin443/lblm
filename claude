@@ -1,58 +1,2031 @@
-Summary
-Sudo is prone to a heap-based buffer overflow dubbed
-'Baron Samedit'.
-Detection Result
-Used command: sudoedit -s '\' `perl -e 'print "A" x 65536'`
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly English Pattern</title>
+    
+    <!-- html2canvas & jsPDF 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-user-select: none; /* 텍스트 선택 방지 */
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        
+        /* 입력 필드는 선택 허용 */
+        input, textarea {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
+        :root {
+            --primary: #6366F1;
+            --primary-dark: #4338CA;
+            --primary-light: #818CF8;
+            --accent: #F59E0B;
+            --accent-light: #FCD34D;
+            --surface: #F8FAFC;
+            --surface-dark: #E2E8F0;
+            --text: #1E293B;
+            --text-secondary: #64748B;
+            --border: #E2E8F0;
+            --success: #10B981;
+            --danger: #EF4444;
+            --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+            --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+            --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+        }
+        
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background: #F1F5F9;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .wrapper {
+            display: flex;
+            gap: 30px;
+            max-width: 1400px;
+            width: 100%;
+            align-items: flex-start;
+        }
+        
+        /* 컨트롤 패널 - 최신 UI 스타일 */
+        .control-panel {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: var(--shadow-lg);
+            width: 320px;
+            position: sticky;
+            top: 20px;
+        }
+        
+        .control-header {
+            margin-bottom: 30px;
+        }
+        
+        .control-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 8px;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .control-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        
+        .control-section {
+            margin-bottom: 25px;
+        }
+        
+        .control-section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-family: 'Inter', sans-serif;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        
+        .btn-outline {
+            background: white;
+            color: var(--text);
+            border: 2px solid var(--border);
+        }
+        
+        .btn-outline:hover {
+            background: var(--surface);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .btn-danger {
+            background: white;
+            color: var(--danger);
+            border: 2px solid var(--danger);
+        }
+        
+        .btn-danger:hover {
+            background: var(--danger);
+            color: white;
+        }
+        
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .info-box {
+            background: var(--surface);
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 0.813rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            border: 1px solid var(--border);
+        }
+        
+        .info-box-title {
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .shortcut {
+            display: inline-block;
+            background: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            border: 1px solid var(--border);
+            margin: 0 2px;
+        }
+        
+        /* 메인 포스터 - 최신 미니멀 디자인 */
+        .container {
+            width: 210mm;
+            height: 297mm; /* 정확한 A4 높이 */
+            background: white;
+            box-shadow: var(--shadow-xl);
+            position: relative;
+            overflow: visible;
+            border-radius: 24px;
+        }
+        
+        .poster {
+            padding: 50px 60px; /* 상하 패딩 조정 */
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        /* 배경 패턴 */
+        .bg-pattern {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            opacity: 0.03;
+            background-image: 
+                radial-gradient(circle at 20% 80%, var(--primary) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, var(--accent) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        
+        /* 헤더 - 미니멀 스타일 */
+        .header {
+            margin-bottom: 40px; /* 간격 축소 */
+            position: relative;
+            z-index: 1;
+        }
+        
+        .header-top {
+			display: flex;
+			justify-content: space-between;
+			align-items: flex-start;
+			margin-bottom: 25px;
+		}
+				
+        .logo {
+			display: flex;
+			align-items: center;
+			flex: 0 0 auto; /* 왼쪽 고정 */
+		}
+        
+        .logo-svg {
+			display: block;
+			height: auto;
+		}
+				
+        .logo-text::before {
+			content: '';
+			position: absolute;
+			bottom: -2px;
+			left: 0;
+			width: 60%;
+			height: 3px;
+			background: var(--primary); /* 그라데이션 대신 단색 사용 */
+			border-radius: 2px;
+		}
+				
+        .date-badge {
+			background: var(--surface);
+			padding: 10px 20px;
+			border-radius: 100px;
+			font-size: 0.875rem;
+			font-weight: 600;
+			color: var(--text-secondary);
+			border: 2px solid var(--border);
+			flex: 0 0 auto; /* 오른쪽 고정 */
+			margin-left: auto; /* 오른쪽으로 밀어냄 */
+		}
+        
+        .main-title {
+            font-family: 'Poppins', sans-serif;
+            font-size: 3rem; /* 크기 축소 */
+            font-weight: 900;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin-bottom: 12px; /* 간격 축소 */
+            color: var(--text); /* gradient 제거하고 단색으로 */
+        }
+        
+        .subtitle {
+            font-size: 1.125rem; /* 크기 축소 */
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        /* 패턴 영역 - 모던 카드 스타일 (동적 크기 조절) */
+        .patterns-grid {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 18px; /* 간격 축소 */
+            margin-bottom: 30px; /* 간격 축소 */
+            position: relative;
+            z-index: 1;
+            overflow: visible; /* auto에서 visible로 변경 */
+            max-height: calc(100% - 300px); /* 헤더와 푸터를 제외한 공간 */
+        }
+        
+        /* 패턴 카드 - overflow visible로 변경 */
+        .pattern-card {
+			background: var(--surface);
+			border: 2px solid var(--border);
+			border-radius: 20px;
+			padding: 50px 28px 24px 28px; /* 상단 패딩만 증가 */
+			transition: all 0.3s ease;
+			position: relative;
+			overflow: visible;
+			display: flex;
+			flex-direction: column;
+		}
+        
+        .pattern-card.size-small {
+            min-height: 140px;
+        }
+        
+        .pattern-card.size-medium {
+            min-height: 160px;
+        }
+        
+        .pattern-card.size-large {
+            min-height: 180px;
+        }
+        
+        .pattern-card.size-xl {
+            min-height: 220px;
+        }
+        
+        /* 예제 숨김 시 카드 크기 축소 및 수직 가운데 정렬 */
+        .pattern-card.examples-hidden {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            position: relative;
+        }
+        
+        /* 예제 숨김 상태에서 헤더 완전히 숨김 */
+        .pattern-card.examples-hidden .pattern-header {
+            display: none;
+        }
+        
+        /* 예제 숨김 상태에서 input-group을 카드 중앙에 배치 */
+        .pattern-card.examples-hidden .pattern-input-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            margin: 0;
+        }
+        
+        .pattern-card.examples-hidden .pattern-label {
+            margin-bottom: 12px;
+        }
+        
+        .pattern-card.examples-hidden.size-small {
+            min-height: 100px;
+        }
+        
+        .pattern-card.examples-hidden.size-medium {
+            min-height: 110px;
+        }
+        
+        .pattern-card.examples-hidden.size-large {
+            min-height: 120px;
+        }
+        
+        .pattern-card.examples-hidden.size-xl {
+            min-height: 130px;
+        }
+        
+        .pattern-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+        
+        .pattern-card:hover {
+            border-color: var(--primary);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+        
+        .pattern-card:hover::before {
+            transform: scaleX(1);
+        }
+        
+        .pattern-card.editing {
+            background: white;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        .pattern-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+            position: relative;
+            justify-content: space-between; /* 날짜를 오른쪽으로 배치 */
+        }
+        
+        /* 예제 보이는 상태에서도 헤더 숨기기 */
+        .pattern-card .pattern-header {
+            display: none;
+        }
+        
+        /* 날짜 입력 영역을 카드 좌상단에 절대 위치로 배치 */
+        .pattern-date-section {
+			position: absolute;
+			top: 12px;
+			left: 12px;
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			z-index: 100;
+			width: auto;
+			max-width: 180px;
+}
+        
+        .pattern-date-input {
+			background: white;
+			border: 2px solid var(--border);
+			border-radius: 8px;
+			padding: 8px 10px;
+			font-size: 0.9rem;
+			font-weight: 600;
+			color: var(--text);
+			width: 130px;
+			height: 45px;
+			text-align: left;
+			font-family: 'Inter', sans-serif;
+			transition: all 0.2s ease;
+			white-space: nowrap;
+			overflow: visible;
+			text-overflow: clip;
+			box-sizing: border-box;
+		}
+        
+        .pattern-date-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        
+        .pattern-date-input:hover {
+            border-color: var(--primary);
+        }
+        
+        .calendar-btn {
+			background: var(--surface);
+			border: 2px solid var(--border);
+			border-radius: 6px;
+			padding: 3px;
+			cursor: pointer;
+			transition: all 0.2s ease;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			width: 26px;
+			height: 26px;
+		}
+				
+        .calendar-btn:hover {
+            border-color: var(--primary);
+            background: white;
+        }
+        
+        .calendar-btn svg {
+            width: 14px;
+            height: 14px;
+            color: var(--text-secondary);
+        }
+        
+        .calendar-btn:hover svg {
+            color: var(--primary);
+        }
+        
+        /* 캘린더 드롭다운 */
+		.calendar-dropdown {
+		  display: none;
+		  position: fixed;
+		  top: 50%;
+		  left: 50%;
+		  transform: translate(-50%, -50%);  /* 화면 정중앙 */
+		  z-index: 4000;
+		  background: white;
+		  border: 2px solid var(--border);
+		  border-radius: 12px;
+		  padding: 16px;
+		  box-shadow: var(--shadow-xl);
+		  min-width: 280px;
+		}
+		.calendar-dropdown.show {
+		  display: block;
+		}
+        
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        
+        .calendar-nav-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            transition: background-color 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .calendar-nav-btn:hover {
+            background: var(--surface);
+        }
+        
+        .calendar-nav-btn svg {
+            width: 16px;
+            height: 16px;
+            color: var(--text-secondary);
+        }
+        
+        .calendar-month-year {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+        
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        
+        .calendar-day-header {
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            padding: 8px 4px;
+        }
+        
+        .calendar-day {
+            text-align: center;
+            padding: 8px 4px;
+            font-size: 0.813rem;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+            min-height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .calendar-day:hover {
+            background: var(--surface);
+        }
+        
+        .calendar-day.today {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .calendar-day.selected {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .calendar-day.other-month {
+            color: var(--text-secondary);
+            opacity: 0.5;
+        }
+        
+        .pattern-delete-btn {
+			position: absolute;
+			top: 12px;
+			right: 12px;
+			background: var(--danger);
+			color: white;
+			border: none;
+			font-size: 0.625rem;
+			font-weight: 500;
+			padding: 2px 6px;
+			border-radius: 4px;
+			cursor: pointer;
+			opacity: 0;
+			transition: all 0.2s ease;
+			z-index: 110;
+			font-family: 'Inter', sans-serif;
+			line-height: 1;
+		}
+        
+        .pattern-card:hover .pattern-delete-btn {
+            opacity: 1;
+        }
+        
+        .pattern-delete-btn:hover {
+            background: #DC2626;
+            transform: scale(1.05);
+        }
+        
+        .pattern-number {
+            width: 48px;
+            height: 48px;
+            background: white;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Poppins', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 800;
+            color: var(--primary);
+            box-shadow: var(--shadow-sm);
+            border: 2px solid var(--border);
+            flex-shrink: 0;
+        }
+        
+        .pattern-input-group {
+            flex: 1;
+        }
+        
+        .pattern-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        
+        .pattern-input,
+        .pattern-display {
+            width: 100%;
+            padding: 14px 18px; /* 패딩 축소 */
+            font-size: 1.375rem; /* 크기 축소 */
+            font-weight: 700;
+            font-family: 'Poppins', sans-serif;
+            border-radius: 12px;
+            transition: all 0.2s ease;
+            text-align: center; /* 가운데 정렬 */
+            word-wrap: break-word; /* 자동 줄바꿈 */
+            overflow-wrap: break-word; /* 자동 줄바꿈 */
+            word-break: break-word; /* 긴 단어 강제 줄바꿈 */
+            hyphens: auto; /* 단어 분리 */
+            white-space: normal; /* 줄바꿈 허용 */
+            max-width: 100%; /* 너비 제한 */
+            box-sizing: border-box; /* 박스 모델 정확성 */
+        }
+        
+        .pattern-input {
+            background: white;
+            border: 2px solid var(--border);
+            color: var(--text);
+            display: none;
+        }
+        
+        .pattern-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        .pattern-display {
+            background: white;
+            border: 2px solid transparent;
+            color: var(--text);
+            cursor: pointer;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center; /* 가운데 정렬 */
+            line-height: 1.4;
+        }
+        
+        .pattern-display:hover {
+            background: white;
+            border-color: var(--border);
+        }
+        
+        .pattern-display.empty {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 1.125rem;
+        }
+        
+        .pattern-card.editing .pattern-input {
+            display: block;
+        }
+        
+        .pattern-card.editing .pattern-display {
+            display: none;
+        }
+        
+        /* Examples 토글 기능 - 기본적으로 숨김 */
+        .examples-section {
+            display: none; /* 기본적으로 숨김 */
+        }
+        
+        .examples-section.show {
+            display: block; /* show 클래스가 있을 때만 표시 */
+        }
+        
+        /* 네모 박스 스타일 - 공백 개수에 따른 크기 조절 */
+        .blank-box {
+            display: inline-block;
+            height: 30px;
+            border: 2px solid var(--primary);
+            border-radius: 6px;
+            margin: 0 4px;
+            vertical-align: middle;
+            background: white;
+            position: relative;
+        }
+        
+        /* 공백 개수에 따른 박스 크기 */
+        .blank-box.space-1 {
+            width: 50px; /* [] */
+        }
+        
+        .blank-box.space-2 {
+            width: 80px; /* [ ] */
+        }
+        
+        .blank-box.space-3 {
+            width: 110px; /* [   ] */
+        }
+        
+        .blank-box.space-4 {
+            width: 140px; /* [     ] */
+        }
+        
+        .blank-box.space-5-plus {
+            width: 170px; /* [       ] 이상 */
+        }
+        
+        .examples-section {
+            margin-top: 20px; /* 간격 조정 */
+            padding-top: 20px; /* 간격 조정 */
+            border-top: 1px solid var(--border);
+        }
+        
+        .examples-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px; /* 간격 조정 */
+            text-align: center; /* 가운데 정렬 */
+        }
+        
+        .examples-input,
+        .examples-display {
+            width: 100%;
+            min-height: 80px; /* 높이 증가 */
+            padding: 12px 16px; /* 패딩 조정 */
+            font-size: 1rem; /* 크기 조정 */
+            line-height: 1.5;
+            border-radius: 12px;
+            font-family: 'Inter', sans-serif;
+            text-align: center; /* 가운데 정렬 */
+            word-wrap: break-word; /* 자동 줄바꿈 */
+            overflow-wrap: break-word; /* 자동 줄바꿈 */
+            word-break: break-word; /* 긴 단어 강제 줄바꿈 */
+            hyphens: auto; /* 단어 분리 */
+            white-space: pre-wrap; /* 줄바꿈 유지하면서 자동 줄바꿈 */
+            max-width: 100%; /* 너비 제한 */
+            box-sizing: border-box; /* 박스 모델 정확성 */
+        }
+        
+        .examples-input {
+            background: white;
+            border: 2px solid var(--border);
+            color: var(--text);
+            resize: vertical;
+            display: none;
+        }
+        
+        .examples-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+        }
+        
+        .examples-display {
+            background: white;
+            color: var(--text-secondary);
+            cursor: pointer;
+            white-space: pre-wrap;
+            display: flex;
+            align-items: center;
+            justify-content: center; /* 가운데 정렬 */
+            text-align: center; /* 텍스트 가운데 정렬 추가 */
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        /* 예제 텍스트가 있을 때 완전한 가운데 정렬 보장 */
+        .examples-display:not(.empty) {
+            white-space: normal; /* pre-wrap 대신 normal 사용 */
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .examples-display:hover {
+            background: white;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .examples-display.empty {
+            font-style: italic;
+        }
+        
+        .pattern-card.editing .examples-input {
+            display: block;
+        }
+        
+        .pattern-card.editing .examples-display {
+            display: none;
+        }
+        
+        /* 푸터 - 모던 스타일 */
+        .footer {
+            text-align: center;
+            padding-top: 30px; /* 패딩 축소 */
+            border-top: 1px solid var(--border);
+            position: relative;
+            z-index: 1;
+            margin-top: auto; /* 하단 고정 */
+        }
+        
+        .footer-text {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        .footer-logo {
+            font-family: 'Poppins', sans-serif;
+            font-weight: 600;
+            color: var(--primary);
+            margin: 0 4px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        
+        /* 저장 옵션 모달 */
+        .save-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            z-index: 3000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .save-modal {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: var(--shadow-xl);
+            position: relative;
+            animation: modalSlideIn 0.3s ease;
+        }
+        
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        
+        .save-modal-header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        .save-modal-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--text);
+            margin-bottom: 8px;
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .save-modal-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        .save-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: 30px;
+        }
+        
+        .save-option {
+            background: var(--surface);
+            border: 2px solid var(--border);
+            border-radius: 16px;
+            padding: 24px 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .save-option:hover {
+            border-color: var(--primary);
+            background: white;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .save-option-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            margin-bottom: 8px;
+        }
+        
+        .save-option.pdf .save-option-icon {
+            background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+        }
+        
+        .save-option.png .save-option-icon {
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+        }
+        
+        .save-option-title {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text);
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .save-option-desc {
+            font-size: 0.813rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        
+        .save-modal-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        
+        .btn-modal-cancel {
+            background: white;
+            color: var(--text-secondary);
+            border: 2px solid var(--border);
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .btn-modal-cancel:hover {
+            background: var(--surface);
+            border-color: var(--text-secondary);
+        }
+        
+        /* 로딩 오버레이 */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(8px);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 24px;
+        }
+        
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top: 4px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-text {
+            color: white;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        
+        /* 프린트 및 스크린샷 시 캘린더 버튼 숨김 */
+        @media print, screen {
+            .calendar-btn.hide-for-export {
+                display: none !important;
+            }
+        }
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+                margin: 0;
+            }
+            
+            .wrapper {
+                display: block;
+            }
+            
+            .control-panel {
+                display: none !important;
+            }
+            
+            .container {
+                box-shadow: none;
+                border-radius: 0;
+                width: 210mm;
+                height: 297mm;
+                margin: 0;
+            }
+            
+            .patterns-grid {
+                overflow-y: visible;
+                max-height: none;
+            }
+        }
+        
+        /* 반응형 */
+        @media (max-width: 1200px) {
+            .wrapper {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .control-panel {
+                position: static;
+                width: 100%;
+                max-width: 400px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                width: 100%;
+                min-height: auto;
+                border-radius: 16px;
+            }
+            
+            .poster {
+                padding: 30px;
+            }
+            
+            .main-title {
+                font-size: 2.5rem;
+            }
+            
+            .pattern-input,
+            .pattern-display {
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <!-- 컨트롤 패널 -->
+        <div class="control-panel">
+            <div class="control-header">
+                <h2 class="control-title">Weekly Pattern Builder</h2>
+                <p class="control-subtitle">Create this week's English patterns for your students</p>
+            </div>
+            
+            <div class="control-section">
+                <div class="control-section-title">Actions</div>
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="addPattern()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                        </svg>
+                        Add New Pattern
+                    </button>
+                    
+                    <button class="btn btn-outline" onclick="toggleExamples()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16" id="examples-icon">
+                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                        </svg>
+                        <span id="examples-btn-text">Show Examples</span>
+                    </button>
+                    
+                    <button class="btn btn-outline" onclick="showSaveOptions()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                        </svg>
+                        Save File
+                    </button>
+                    
+                    <button class="btn btn-danger" onclick="clearAll()">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M2.5 1a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1H3v9a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V4h.5a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H10a1 1 0 0 0-1-1H7a1 1 0 0 0-1 1H2.5zm3 4a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 .5-.5zM8 5a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-1 0v-7A.5.5 0 0 1 8 5zm3 .5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0z"/>
+                        </svg>
+                        Clear All
+                    </button>
+                </div>
+            </div>
+            
+            <div class="control-section">
+                <div class="info-box">
+                    <div class="info-box-title">
+                        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/>
+                            <path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+                        </svg>
+                        How to use
+                    </div>
+                    <ul style="margin-left: 20px; font-size: 0.813rem;">
+                        <li>Click on pattern to edit</li>
+                        <li>Type <span class="shortcut">[]</span> <span class="shortcut">[ ]</span> <span class="shortcut">[   ]</span> for different box sizes</li>
+                        <li>Hover over pattern card to see "Del" button</li>
+                        <li>Press <span class="shortcut">Enter</span> to save</li>
+                        <li>Press <span class="shortcut">ESC</span> to cancel</li>
+                        <li>Maximum 3 patterns per sheet</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 메인 포스터 -->
+        <div class="container" id="poster-container">
+            <div class="poster">
+                <div class="bg-pattern"></div>
+                
+                <!-- 헤더 -->
+                <div class="header">
+					<div class="header-top">
+						<div class="logo">
+							<svg width="220" height="35" viewBox="0 0 220 35" class="logo-svg">
+								<defs>
+									<linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+										<stop offset="0%" style="stop-color:#6366F1;stop-opacity:1" />
+										<stop offset="100%" style="stop-color:#F59E0B;stop-opacity:1" />
+									</linearGradient>
+								</defs>
+								<text x="0" y="24" font-family="Poppins, sans-serif" font-size="20" font-weight="800" fill="url(#logoGradient)" letter-spacing="1">ZENITH ENGLISH</text>
+								<rect x="0" y="28" width="110" height="3" fill="url(#logoGradient)" rx="1.5"/>
+							</svg>
+						</div>
+						<div class="date-badge" id="date-badge"></div>
+					</div>
+					
+					<h1 class="main-title" id="main-title">This Week's English<br>Pattern Practice</h1>
+					<p class="subtitle">Master these patterns and expand your English!</p>
+				</div>
+                
+                <!-- 패턴 그리드 -->
+                <div class="patterns-grid" id="patterns-grid">
+                    <!-- 패턴들이 여기에 동적으로 생성됩니다 -->
+                </div>
+                
+                <!-- 푸터 -->
+                <div class="footer">
+                    <div class="footer-text">
+                        <span class="footer-logo">ZENITH ENGLISH</span>
+                        • Excellence in English Education
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 저장 옵션 선택 모달 -->
+    <div class="save-modal-overlay" id="save-modal-overlay">
+        <div class="save-modal">
+            <div class="save-modal-header">
+                <h3 class="save-modal-title">Choose File Format</h3>
+                <p class="save-modal-subtitle">Select how you'd like to save your pattern sheet</p>
+            </div>
+            
+            <div class="save-options">
+                <div class="save-option pdf" onclick="saveAs('pdf')">
+                    <div class="save-option-icon">📄</div>
+                    <div class="save-option-title">PDF</div>
+                    <div class="save-option-desc">Perfect for printing and sharing. Maintains quality at any size.</div>
+                </div>
+                
+                <div class="save-option png" onclick="saveAs('png')">
+                    <div class="save-option-icon">🖼️</div>
+                    <div class="save-option-title">PNG</div>
+                    <div class="save-option-desc">High-quality image format. Great for digital use and presentations.</div>
+                </div>
+            </div>
+            
+            <div class="save-modal-actions">
+                <button class="btn-modal-cancel" onclick="closeSaveModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- PDF 저장 중 로딩 -->
+    <div class="loading-overlay" id="loading-overlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Generating PDF...</div>
+    </div>
+    
+    <script>
+        let patterns = [];
+        let patternCounter = 0;
+        let examplesVisible = false; // 예제 표시 상태를 전역적으로 관리
+		
+		let activeCalendar = null;
+        let currentCalendarDate = new Date();
+        
+        // XSS 방지를 위한 HTML 이스케이프 함수
+        function escapeHTML(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // XSS 방지를 위한 입력값 검증 및 정화
+        function sanitizeInput(input) {
+            if (typeof input !== 'string') return '';
+            
+            // 위험한 문자열 패턴 제거
+            const dangerousPatterns = [
+                /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+                /<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi,
+                /javascript:/gi,
+                /on\w+\s*=/gi,
+                /<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi,
+                /<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi,
+                /<link\b[^>]*>/gi,
+                /<meta\b[^>]*>/gi,
+                /<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi
+            ];
+            
+            let sanitized = input;
+            dangerousPatterns.forEach(pattern => {
+                sanitized = sanitized.replace(pattern, '');
+            });
+            
+            // HTML 엔티티로 변환
+            return escapeHTML(sanitized).substring(0, 500); // 길이 제한도 적용
+        }
+        
+        // 날짜 포맷팅 유틸리티 함수들
+        function formatDateToYYMMDD(date) {
+            const year = date.getFullYear().toString().slice(-2);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const dayOfWeek = dayNames[date.getDay()];
+            
+            return `${year}.${month}.${day} (${dayOfWeek})`;
+        }
+        
+        function parseYYMMDDToDate(dateStr) {
+            // 요일 부분 제거 - 괄호와 그 안의 내용을 제거
+            const dateOnly = dateStr.split(' ')[0];
+            const parts = dateOnly.split('.');
+            if (parts.length !== 3) return new Date();
+            
+            const year = 2000 + parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            return new Date(year, month, day);
+        }
+        
+        function validateDateFormat(dateStr) {
+            // 요일이 포함된 형식과 포함되지 않은 형식 둘 다 허용
+            const regexWithDay = /^\d{2}\.\d{2}\.\d{2} \([A-Za-z]{3}\)$/;
+            const regexWithoutDay = /^\d{2}\.\d{2}\.\d{2}$/;
+            
+            if (!regexWithDay.test(dateStr) && !regexWithoutDay.test(dateStr)) {
+                return false;
+            }
+            
+            const date = parseYYMMDDToDate(dateStr);
+            return !isNaN(date.getTime());
+        }
+        
+        // 날짜 업데이트 - 주간으로 변경
+        function updateDate() {
+		  const now = new Date();
+		  const startOfWeek = new Date(now);
+		  startOfWeek.setDate(now.getDate() - now.getDay()); // Sun 시작
+		  const endOfWeek = new Date(startOfWeek);
+		  endOfWeek.setDate(startOfWeek.getDate() + 6);
 
-Result: sudoedit -s '' `perl -e 'print "A" x 65536'`
-Segmentation fault
-]0;root@swgv10-inline-172:~root@swgv10-inline-172 ~]#
-Product Detection Result
-Product
-cpe:/a:sudo_project:sudo:1.8.23
-Method
-sudo / sudoers Detection (Linux/Unix SSH Login) (OID: 1.3.6.1.4.1.25623.1.0.117185)
-Log
-View details of product detection
-Insight
-Sudo is allowing privilege escalation to root via 'sudoedit -s'
-and a command-line argument that ends with a single backslash character.
-Detection Method
-Runs a specific SSH command after the login to the target
-which is known to trigger an error message on affected versions of Sudo.
-Details:
-Sudo Heap-Based Buffer Overflow Vulnerability (Baron Samedit) - Active...
-OID: 1.3.6.1.4.1.25623.1.0.117187
-Version used:
-2022-08-09T10:11:17Z
-Affected Software/OS
-All legacy versions from 1.8.2 to 1.8.31p2 and all stable
-versions from 1.9.0 to 1.9.5p1 in their default configuration.
-Solution
-Solution Type:
-Vendorfix
-Update to version 1.9.5p2 or later.
-References
-CVE
-CVE-2021-3156
-CERT
-DFN-CERT-2022-0224
-DFN-CERT-2021-0806
-DFN-CERT-2021-0781
-DFN-CERT-2021-0299
-DFN-CERT-2021-0249
-DFN-CERT-2021-0202
-DFN-CERT-2021-0181
-DFN-CERT-2021-0180
-DFN-CERT-2021-0178
-WID-SEC-2023-0066
-WID-SEC-2022-1908
-WID-SEC-2022-0623
-CB-K22/0130
-CB-K21/0161
-CB-K21/0092
-Other
-https://www.cisa.gov/known-exploited-vulnerabilities-catalog
-https://www.sudo.ws/stable.html#1.9.5p2
-https://blog.qualys.com/vulnerabilities-research/2021/01/26/cve-2021-3156-heap-based-buffer-overflow-in-sudo-baron-samedit
-cisa: Known Exploited Vulnerability (KEV) catalog
+		  const options = { month: 'short', day: 'numeric' };
+		  const startStr = startOfWeek.toLocaleDateString('en-US', options);
+		  const endStr = endOfWeek.toLocaleDateString('en-US', options);
+		  const year = now.getFullYear();
+
+		  const badge = document.getElementById('date-badge');
+		  if (badge) badge.textContent = `${startStr} - ${endStr}, ${year}`;
+		}
+        
+        // 텍스트에서 [] 를 네모 박스로 변환 (공백 개수로 크기 결정) - XSS 방지 적용
+        function processBlankBoxes(text, isTitle = false) {
+            if (isTitle) {
+                return escapeHTML(text); // 제목에서는 HTML 이스케이프만 적용
+            }
+            
+            // 먼저 입력값을 정화
+            const sanitizedText = sanitizeInput(text);
+            
+            // [공백들] 패턴을 찾아서 공백 개수에 따라 박스 크기 조절
+            return sanitizedText.replace(/\[(\s*)\]/g, function(match, spaces) {
+                const spaceCount = spaces.length;
+                let sizeClass = '';
+                
+                if (spaceCount === 0) {
+                    sizeClass = 'space-1'; // [] - 가장 작은 크기
+                } else if (spaceCount === 1) {
+                    sizeClass = 'space-2'; // [ ] - 작은 크기
+                } else if (spaceCount === 2 || spaceCount === 3) {
+                    sizeClass = 'space-3'; // [  ] 또는 [   ] - 중간 크기
+                } else if (spaceCount === 4 || spaceCount === 5) {
+                    sizeClass = 'space-4'; // [    ] 또는 [     ] - 큰 크기
+                } else {
+                    sizeClass = 'space-5-plus'; // 그 이상 - 가장 큰 크기
+                }
+                
+                return `<span class="blank-box ${sizeClass}"></span>`;
+            });
+        }
+        
+        // 패턴 카드의 높이 자동 조절 (내용에 따라)
+        function adjustCardSize(patternId) {
+            const card = document.getElementById(`pattern-${patternId}`);
+            const pattern = patterns.find(p => p.id === patternId);
+            
+            if (!card || !pattern) {
+                return;
+            }
+            
+            // 기존 크기 클래스 제거
+            card.classList.remove('size-small', 'size-medium', 'size-large', 'size-xl');
+            
+            const totalLength = (pattern.pattern || '').length + (pattern.examples || '').length;
+            let sizeClass = '';
+            
+            if (totalLength < 50) {
+                sizeClass = 'size-small';
+            } else if (totalLength < 100) {
+                sizeClass = 'size-medium';
+            } else if (totalLength < 200) {
+                sizeClass = 'size-large';
+            } else {
+                sizeClass = 'size-xl';
+            }
+            
+            card.classList.add(sizeClass);
+        }
+
+        // 예제 표시 상태 적용 함수
+        function applyExamplesVisibility() {
+            const examplesSections = document.querySelectorAll('.examples-section');
+            const patternCards = document.querySelectorAll('.pattern-card');
+            
+            examplesSections.forEach(section => {
+                if (examplesVisible) {
+                    section.classList.add('show');
+                } else {
+                    section.classList.remove('show');
+                }
+            });
+            
+            patternCards.forEach(card => {
+                if (examplesVisible) {
+                    card.classList.remove('examples-hidden');
+                } else {
+                    card.classList.add('examples-hidden');
+                }
+            });
+        }
+        
+        function renderPatterns() {
+            const grid = document.getElementById('patterns-grid');
+            grid.innerHTML = '';
+            
+            if (patterns.length === 0) {
+                // 빈 상태 표시
+                const emptyState = document.createElement('div');
+                emptyState.style.textAlign = 'center';
+                emptyState.style.padding = '60px';
+                emptyState.style.color = '#94A3B8';
+                emptyState.innerHTML = `
+                    <div style="font-size: 3rem; margin-bottom: 16px;">📚</div>
+                    <div style="font-size: 1.125rem; font-weight: 500;">No patterns yet</div>
+                    <div style="font-size: 0.875rem; margin-top: 8px;">Click "Add New Pattern" to get started</div>
+                `;
+                grid.appendChild(emptyState);
+                return;
+            }
+            
+            patterns.forEach((pattern, index) => {
+                const card = createPatternCard(pattern, index + 1);
+                grid.appendChild(card);
+                
+            });
+            
+            // 예제 표시 상태 적용
+            setTimeout(() => {
+                applyExamplesVisibility();
+            }, 100);
+        }
+        
+        // 패턴 카드 생성
+        function createPatternCard(pattern, number) {
+            const card = document.createElement('div');
+            card.className = 'pattern-card';
+            card.id = `pattern-${pattern.id}`;
+            
+            // 패턴 텍스트에서 [] 를 네모 박스로 변환
+            const processedPattern = pattern.pattern ? processBlankBoxes(pattern.pattern) : '';
+            const processedExamples = pattern.examples ? processBlankBoxes(pattern.examples) : '';
+            
+            card.innerHTML = `
+                <button class="pattern-delete-btn" onclick="deletePattern(${pattern.id})" title="Delete pattern">Del</button>
+                
+                <!-- 날짜 입력 영역 - 절대 위치로 우상단에 배치 -->
+                <div class="pattern-date-section">
+                    <input type="text" 
+                           class="pattern-date-input" 
+                           id="pattern-date-${pattern.id}"
+                           value="${pattern.date || ''}"
+                           placeholder="YY.MM.DD (Day)"
+                           onblur="saveDatePattern(${pattern.id})"
+                           onkeydown="handleDateKeydown(event, ${pattern.id})">
+                    <button class="calendar-btn" onclick="toggleCalendar(${pattern.id})">
+                        <svg fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5 0zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                        </svg>
+                    </button>
+                    <div class="calendar-dropdown" id="calendar-${pattern.id}">
+                        <div class="calendar-header">
+                            <button class="calendar-nav-btn" onclick="navigateCalendar(${pattern.id}, -1)">
+                                <svg fill="currentColor" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M11.354 1.646a.5.5 0 0 1 0 .708L5.707 8l5.647 5.646a.5.5 0 0 1-.708.708l-6-6a.5.5 0 0 1 0-.708l6-6a.5.5 0 0 1 .708 0z"/>
+                                </svg>
+                            </button>
+                            <div class="calendar-month-year" id="calendar-header-${pattern.id}"></div>
+                            <button class="calendar-nav-btn" onclick="navigateCalendar(${pattern.id}, 1)">
+                                <svg fill="currentColor" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M4.646 1.646a.5.5 0 0 1 .708 0l6 6a.5.5 0 0 1 0 .708l-6 6a.5.5 0 0 1-.708-.708L10.293 8 4.646 2.354a.5.5 0 0 1 0-.708z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="calendar-grid" id="calendar-grid-${pattern.id}"></div>
+                    </div>
+                </div>
+                
+                <div class="pattern-input-group">
+                    <div class="pattern-label">Pattern ${number}</div>
+                    <input type="text" 
+                           class="pattern-input" 
+                           id="pattern-input-${pattern.id}"
+                           placeholder="Enter pattern (e.g., I can [] / I love to [ ] / Have you ever [   ]?)"
+                           value="${pattern.pattern || ''}"
+                           onkeydown="handlePatternKeydown(event, ${pattern.id})"
+                           onblur="savePattern(${pattern.id})">
+                    <div class="pattern-display ${!pattern.pattern ? 'empty' : ''}" 
+                         onclick="editPattern(${pattern.id})">
+                        ${processedPattern || 'Click to add pattern (use [], [ ], [   ] for different sizes)'}
+                    </div>
+                </div>
+                
+                <div class="examples-section" id="examples-section-${pattern.id}">
+                    <div class="examples-label">Examples</div>
+                    <textarea class="examples-input"
+                              id="examples-input-${pattern.id}"
+                              placeholder="Enter example sentences (one per line, use [], [ ], [   ] for different sizes)"
+                              onkeydown="handleExamplesKeydown(event, ${pattern.id})"
+                              onblur="saveExamples(${pattern.id})">${pattern.examples || ''}</textarea>
+                    <div class="examples-display ${!pattern.examples ? 'empty' : ''}"
+                         onclick="editExamples(${pattern.id})">
+                        ${processedExamples || 'Click to add example sentences (use [], [ ], [   ] for different sizes)'}
+                    </div>
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        // 패턴 편집
+        function editPattern(id) {
+            const card = document.getElementById(`pattern-${id}`);
+            const input = document.getElementById(`pattern-input-${id}`);
+            
+            card.classList.add('editing');
+            input.focus();
+            input.select();
+        }
+        
+        // 예시 편집
+        function editExamples(id) {
+            const card = document.getElementById(`pattern-${id}`);
+            const textarea = document.getElementById(`examples-input-${id}`);
+            
+            card.classList.add('editing');
+            textarea.focus();
+        }
+        
+        // 패턴 저장
+        function savePattern(id) {
+            const card = document.getElementById(`pattern-${id}`);
+            const input = document.getElementById(`pattern-input-${id}`);
+            const pattern = patterns.find(p => p.id === id);
+            
+            if (pattern) {
+                pattern.pattern = input.value.trim();
+                adjustCardSize(pattern.id);
+                renderPatterns();
+            }
+        }
+        
+        // 예시 저장
+        function saveExamples(id) {
+            const card = document.getElementById(`pattern-${id}`);
+            const textarea = document.getElementById(`examples-input-${id}`);
+            const pattern = patterns.find(p => p.id === id);
+            
+            if (pattern) {
+                pattern.examples = textarea.value.trim();
+                adjustCardSize(pattern.id);
+                renderPatterns();
+            }
+        }
+        
+        // 패턴 입력 키 핸들링
+        function handlePatternKeydown(event, id) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                savePattern(id);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                const card = document.getElementById(`pattern-${id}`);
+                const input = document.getElementById(`pattern-input-${id}`);
+                const pattern = patterns.find(p => p.id === id);
+                
+                if (pattern) {
+                    input.value = pattern.pattern || '';
+                }
+                card.classList.remove('editing');
+            }
+        }
+        
+        // 예시 입력 키 핸들링
+        function handleExamplesKeydown(event, id) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                const card = document.getElementById(`pattern-${id}`);
+                const textarea = document.getElementById(`examples-input-${id}`);
+                const pattern = patterns.find(p => p.id === id);
+                
+                if (pattern) {
+                    textarea.value = pattern.examples || '';
+                }
+                card.classList.remove('editing');
+            }
+        }
+        
+        // 날짜 저장
+        function saveDatePattern(id) {
+            const input = document.getElementById(`pattern-date-${id}`);
+            const pattern = patterns.find(p => p.id === id);
+            
+            if (pattern) {
+                const dateValue = input.value.trim();
+                if (dateValue === '' || validateDateFormat(dateValue)) {
+                    pattern.date = dateValue;
+                } else {
+                    // 잘못된 형식일 경우 이전 값으로 복원
+                    input.value = pattern.date || '';
+                    alert('날짜 형식이 올바르지 않습니다. YY.MM.DD 형식으로 입력해주세요. (예: 25.08.25)');
+                }
+            }
+        }
+		
+		function handleDateKeydown(e, id) {
+		  if (e.key === 'Enter') { e.preventDefault(); saveDatePattern(id); }
+		  if (e.key === 'Escape') { e.preventDefault(); e.target.blur(); }
+		}
+        
+        // 날짜 입력 키 핸들링
+        function toggleCalendar(id) {
+		  const calendar = document.getElementById(`calendar-${id}`);
+		  const wasVisible = calendar.classList.contains('show');
+
+		  // 모든 캘린더 닫기
+		  document.querySelectorAll('.calendar-dropdown').forEach(cal => cal.classList.remove('show'));
+
+		  if (!wasVisible) {
+			activeCalendar = id;
+			const pattern = patterns.find(p => p.id === id);
+
+			// 기준 날짜 세팅
+			if (pattern?.date && validateDateFormat(pattern.date)) {
+			  currentCalendarDate = parseYYMMDDToDate(pattern.date);
+			} else {
+			  currentCalendarDate = new Date();
+			}
+			renderCalendar(id);
+
+			// 중앙에 띄우기
+			calendar.classList.add('show');
+		  } else {
+			activeCalendar = null;
+		  }
+		}
+
+        
+        // 캘린더 렌더링
+        function renderCalendar(id) {
+            const headerElement = document.getElementById(`calendar-header-${id}`);
+            const gridElement = document.getElementById(`calendar-grid-${id}`);
+            
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                'July', 'August', 'September', 'October', 'November', 'December'];
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            
+            // 헤더 업데이트
+            headerElement.textContent = `${monthNames[currentCalendarDate.getMonth()]} ${currentCalendarDate.getFullYear()}`;
+            
+            // 그리드 클리어
+            gridElement.innerHTML = '';
+            
+            // 요일 헤더 추가
+            dayNames.forEach(day => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'calendar-day-header';
+                dayHeader.textContent = day;
+                gridElement.appendChild(dayHeader);
+            });
+            
+            // 달력 날짜 생성
+            const firstDay = new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth(), 1);
+            const lastDay = new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() + 1, 0);
+            const startDate = new Date(firstDay);
+            startDate.setDate(startDate.getDate() - firstDay.getDay());
+            
+            const today = new Date();
+            const pattern = patterns.find(p => p.id === id);
+            let selectedDate = null;
+            
+            if (pattern.date && validateDateFormat(pattern.date)) {
+                selectedDate = parseYYMMDDToDate(pattern.date);
+            }
+            
+            // 6주간의 날짜 생성
+            for (let i = 0; i < 42; i++) {
+                const date = new Date(startDate);
+                date.setDate(startDate.getDate() + i);
+                
+                const dayElement = document.createElement('div');
+                dayElement.className = 'calendar-day';
+                dayElement.textContent = date.getDate();
+                
+                // 클래스 설정
+                if (date.getMonth() !== currentCalendarDate.getMonth()) {
+                    dayElement.classList.add('other-month');
+                }
+                
+                if (date.toDateString() === today.toDateString()) {
+                    dayElement.classList.add('today');
+                }
+                
+                if (selectedDate && date.toDateString() === selectedDate.toDateString()) {
+                    dayElement.classList.add('selected');
+                }
+                
+                // 클릭 이벤트
+                dayElement.addEventListener('click', () => selectDate(id, date));
+                
+                gridElement.appendChild(dayElement);
+            }
+        }
+        
+        // 캘린더 네비게이션
+        function navigateCalendar(id, direction) {
+            currentCalendarDate.setMonth(currentCalendarDate.getMonth() + direction);
+            renderCalendar(id);
+        }
+        
+        // 날짜 선택
+        function selectDate(id, date) {
+            const pattern = patterns.find(p => p.id === id);
+            const input = document.getElementById(`pattern-date-${id}`);
+            
+            if (pattern) {
+                pattern.date = formatDateToYYMMDD(date);
+                input.value = pattern.date;
+            }
+            
+            // 캘린더 닫기
+            toggleCalendar(id);
+        }
+        
+        // 캘린더 외부 클릭으로 닫기
+        document.addEventListener('click', function(event) {
+            if (activeCalendar !== null) {
+                const calendarElement = document.getElementById(`calendar-${activeCalendar}`);
+                const calendarBtn = event.target.closest('.calendar-btn');
+                const isInsideCalendar = event.target.closest('.calendar-dropdown');
+                
+                if (!calendarBtn && !isInsideCalendar) {
+                    calendarElement.classList.remove('show');
+                    activeCalendar = null;
+                }
+            }
+        });
+        function toggleExamples() {
+            // 전역 상태 변경
+            examplesVisible = !examplesVisible;
+            
+            const btnText = document.getElementById('examples-btn-text');
+            const btnIcon = document.getElementById('examples-icon');
+            
+            // 버튼 텍스트와 아이콘 업데이트
+            if (examplesVisible) {
+                btnText.textContent = 'Hide Examples';
+                btnIcon.innerHTML = '<path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.061L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/>';
+            } else {
+                btnText.textContent = 'Show Examples';
+                btnIcon.innerHTML = '<path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>';
+            }
+            
+            // 예제 표시 상태 적용
+            applyExamplesVisibility();
+        }
+        
+        // 개별 패턴 삭제 함수 추가
+        function deletePattern(id) {
+            if (patterns.length === 1) {
+                alert('최소 1개의 패턴은 있어야 합니다!');
+                return;
+            }
+            
+            if (confirm('이 패턴을 삭제하시겠습니까?')) {
+                patterns = patterns.filter(p => p.id !== id);
+                renderPatterns();
+            }
+        }
+        
+        // 패턴 추가
+        function addPattern() {
+            if (patterns.length >= 3) {
+                alert('최대 3개까지만 추가할 수 있습니다!');
+                return;
+            }
+            
+            patternCounter++;
+            const today = new Date();
+            const defaultDate = formatDateToYYMMDD(today);
+            
+            const newPattern = {
+                id: patternCounter,
+                pattern: '',
+                examples: '',
+                date: defaultDate
+            };
+            
+            patterns.push(newPattern);
+            renderPatterns();
+            
+            // 새로 추가된 패턴 바로 편집
+            setTimeout(() => editPattern(patternCounter), 100);
+        }
+        
+        // 모두 지우기
+        function clearAll() {
+            if (patterns.length === 0) {
+                alert('지울 패턴이 없습니다!');
+                return;
+            }
+            
+            if (confirm('모든 패턴을 삭제하시겠습니까?')) {
+                patterns = [];
+                patternCounter = 0;
+                renderPatterns();
+            }
+        }
+        
+        // 저장 옵션 모달 표시
+        function showSaveOptions() {
+            const modal = document.getElementById('save-modal-overlay');
+            modal.style.display = 'flex';
+        }
+        
+        // 저장 옵션 모달 닫기
+        function closeSaveModal() {
+            const modal = document.getElementById('save-modal-overlay');
+            modal.style.display = 'none';
+        }
+        
+        // ESC 키로 모달 닫기
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeSaveModal();
+            }
+        });
+        
+        // 모달 오버레이 클릭으로 닫기
+        document.getElementById('save-modal-overlay').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeSaveModal();
+            }
+        });
+        
+        // 파일 저장 (PDF 또는 PNG)
+        async function saveAs(format) {
+			closeSaveModal();
+			
+			const today = new Date();
+			const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+			const filename = `ZENITH_English_Weekly_Pattern_${dateStr}`;
+			
+			const loadingOverlay = document.getElementById('loading-overlay');
+			const loadingText = document.querySelector('.loading-text');
+			
+			if (format === 'pdf') {
+				loadingText.textContent = 'Generating PDF...';
+			} else {
+				loadingText.textContent = 'Generating PNG...';
+			}
+			
+			loadingOverlay.style.display = 'flex';
+			
+			try {
+				const element = document.getElementById('poster-container');
+				
+				// 모든 캘린더 버튼과 날짜 배지 숨김 (PDF/PNG 저장 시)
+				const calendarButtons = document.querySelectorAll('.calendar-btn');
+				const dateBadge = document.getElementById('date-badge'); // 이 줄 추가
+				
+				calendarButtons.forEach(btn => btn.classList.add('hide-for-export'));
+				if (dateBadge) dateBadge.style.display = 'none'; 
+				
+				// 임시로 border-radius 제거 (렌더링 최적화)
+				element.style.borderRadius = '0';
+				
+				const canvas = await html2canvas(element, {
+					scale: 3, // 고해상도
+					useCORS: true,
+					logging: false,
+					backgroundColor: '#ffffff',
+					windowWidth: element.scrollWidth,
+					windowHeight: element.scrollHeight,
+					scrollY: -window.scrollY,
+					scrollX: -window.scrollX,
+					letterRendering: true,
+					allowTaint: false,
+					foreignObjectRendering: false
+				});
+				
+				// 캘린더 버튼과 날짜 배지 다시 표시
+				calendarButtons.forEach(btn => btn.classList.remove('hide-for-export'));
+				if (dateBadge) dateBadge.style.display = 'block';
+				
+				// border-radius 복원
+				element.style.borderRadius = '24px';
+				
+				if (format === 'pdf') {
+					// PDF 저장
+					const { jsPDF } = window.jspdf;
+					const pdf = new jsPDF({
+						orientation: 'portrait',
+						unit: 'mm',
+						format: 'a4',
+						compress: true
+					});
+					
+					const imgData = canvas.toDataURL('image/png', 1.0);
+					
+					// A4 크기에 정확히 맞추기
+					const pdfWidth = 210;
+					const pdfHeight = 297;
+					
+					pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+					pdf.save(`${filename}.pdf`);
+					
+					alert(`PDF가 ${filename}.pdf로 저장되었습니다!`);
+				} else {
+					// PNG 저장
+					const link = document.createElement('a');
+					link.download = `${filename}.png`;
+					link.href = canvas.toDataURL('image/png', 1.0);
+					
+					// 임시로 DOM에 추가하여 클릭
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+					
+					alert(`PNG가 ${filename}.png로 저장되었습니다!`);
+				}
+			} catch (error) {
+				console.error(`${format.toUpperCase()} 생성 오류:`, error);
+				alert(`${format.toUpperCase()} 생성 중 오류가 발생했습니다.`);
+			} finally {
+				loadingOverlay.style.display = 'none';
+			}
+		}
+        
+        // 초기화
+        updateDate();
+        renderPatterns();
+        
+        // 첫 패턴 자동 추가
+        addPattern();
+        
+        // 마우스 우클릭 방지
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+        });
+        
+        // 개발자 도구 키보드 단축키 방지
+        document.addEventListener('keydown', function(event) {
+            // F12 방지
+            if (event.key === 'F12') {
+                event.preventDefault();
+                return false;
+            }
+            
+            // Ctrl+Shift+I 방지 (개발자 도구)
+            if (event.ctrlKey && event.shiftKey && event.key === 'I') {
+                event.preventDefault();
+                return false;
+            }
+            
+            // Ctrl+Shift+J 방지 (콘솔)
+            if (event.ctrlKey && event.shiftKey && event.key === 'J') {
+                event.preventDefault();
+                return false;
+            }
+            
+            // Ctrl+U 방지 (소스 보기)
+            if (event.ctrlKey && event.key === 'u') {
+                event.preventDefault();
+                return false;
+            }
+            
+            // Ctrl+Shift+C 방지 (요소 선택)
+            if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+                event.preventDefault();
+                return false;
+            }
+        });
+        
+        // 드래그 방지
+        document.addEventListener('dragstart', function(event) {
+            event.preventDefault();
+        });
+        
+        // 선택 방지 (CSS로도 처리하지만 추가 보안)
+        document.addEventListener('selectstart', function(event) {
+            // 입력 필드는 선택 허용
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+                return true;
+            }
+            event.preventDefault();
+            return false;
+        });
+    </script>
+</body>
+</html>
