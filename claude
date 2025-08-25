@@ -206,22 +206,25 @@
         
         /* 메인 포스터 - 최신 미니멀 디자인 */
         .container {
-            width: 210mm;
-            height: 297mm; /* 정확한 A4 높이 */
-            background: white;
-            box-shadow: var(--shadow-xl);
-            position: relative;
-            overflow: visible;
-            border-radius: 24px;
-        }
+		    /* A4 비율 정확히 계산: 210mm : 297mm = 1 : 1.414... */
+		    width: 100%;
+		    max-width: 600px; /* 기본 최대 너비 */
+		    aspect-ratio: 210 / 297; /* CSS aspect-ratio로 정확한 A4 비율 유지 */
+		    background: white;
+		    box-shadow: var(--shadow-xl);
+		    position: relative;
+		    overflow: visible;
+		    border-radius: 24px;
+		}
         
         .poster {
-            padding: 50px 60px; /* 상하 패딩 조정 */
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
+		    padding: 6% 7%; /* 비율 기반 패딩 */
+		    height: 100%;
+		    width: 100%;
+		    display: flex;
+		    flex-direction: column;
+		    position: relative;
+		}
         
         /* 배경 패턴 */
         .bg-pattern {
@@ -286,6 +289,7 @@
 		}
         
         .main-title {
+			font-size: clamp(1.8rem, 5vw, 3rem); /* 반응형 크기 */
             font-family: 'Poppins', sans-serif;
             font-size: 3rem; /* 크기 축소 */
             font-weight: 900;
@@ -662,7 +666,7 @@
         .pattern-input,
         .pattern-display {
             width: 100%;
-            padding: 14px 18px; /* 패딩 축소 */
+            padding: 3% 4%; /* 비율 기반 패딩 */
             font-size: 1.375rem; /* 크기 축소 */
             font-weight: 700;
             font-family: 'Poppins', sans-serif;
@@ -1089,38 +1093,24 @@
         
         /* 반응형 */
         @media (max-width: 1200px) {
-            .wrapper {
-                flex-direction: column;
-                align-items: center;
-            }
-            
-            .control-panel {
-                position: static;
-                width: 100%;
-                max-width: 400px;
-            }
-        }
+		    .container {
+		        /* 모바일에서도 A4 비율 정확히 유지 */
+		        max-width: 100%;
+		        width: min(100%, 90vw);
+		        /* aspect-ratio가 자동으로 높이 계산 */
+		    }
+		}
         
         @media (max-width: 768px) {
-            .container {
-                width: 100%;
-                min-height: auto;
-                border-radius: 16px;
-            }
-            
-            .poster {
-                padding: 30px;
-            }
-            
-            .main-title {
-                font-size: 2.5rem;
-            }
-            
-            .pattern-input,
-            .pattern-display {
-                font-size: 1.25rem;
-            }
-        }
+		    .container {
+		        width: 95vw;
+		        max-width: 95vw;
+		    }
+		    
+		    .poster {
+		        padding: 5% 6%; /* 모바일용 패딩 조정 */
+		    }
+		}
     </style>
 </head>
 <body>
@@ -1927,38 +1917,53 @@
 				element.style.borderRadius = '24px';
 				
 				if (format === 'pdf') {
-					// PDF 저장
-					const { jsPDF } = window.jspdf;
-					const pdf = new jsPDF({
-						orientation: 'portrait',
-						unit: 'mm',
-						format: 'a4',
-						compress: true
-					});
-					
-					const imgData = canvas.toDataURL('image/png', 1.0);
-					
-					// A4 크기에 정확히 맞추기
-					const pdfWidth = 210;
-					const pdfHeight = 297;
-					
-					pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-					pdf.save(`${filename}.pdf`);
-					
-					alert(`PDF가 ${filename}.pdf로 저장되었습니다!`);
-				} else {
-					// PNG 저장
-					const link = document.createElement('a');
-					link.download = `${filename}.png`;
-					link.href = canvas.toDataURL('image/png', 1.0);
-					
-					// 임시로 DOM에 추가하여 클릭
-					document.body.appendChild(link);
-					link.click();
-					document.body.removeChild(link);
-					
-					alert(`PNG가 ${filename}.png로 저장되었습니다!`);
-				}
+		            // PDF 저장 - 정확한 A4 크기 유지
+		            const { jsPDF } = window.jspdf;
+		            const pdf = new jsPDF({
+		                orientation: 'portrait',
+		                unit: 'mm',
+		                format: 'a4',
+		                compress: true
+		            });
+		            
+		            const imgData = canvas.toDataURL('image/png', 1.0);
+		            
+		            // A4 크기에 정확히 맞추기 (210mm x 297mm)
+		            const pdfWidth = 210;
+		            const pdfHeight = 297;
+		            
+		            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
+		            pdf.save(`${filename}.pdf`);
+		            
+		            alert(`PDF가 ${filename}.pdf로 저장되었습니다! (A4 비율 유지)`);
+		        } else {
+		            // PNG 저장 - A4 비율 유지
+		            const finalCanvas = document.createElement('canvas');
+		            const ctx = finalCanvas.getContext('2d');
+		            
+		            const canvasWidth = Math.round(containerWidth * 3);
+		            const canvasHeight = Math.round(canvasWidth / A4_RATIO);
+		            
+		            finalCanvas.width = canvasWidth;
+		            finalCanvas.height = canvasHeight;
+		            
+		            // 흰 배경 설정
+		            ctx.fillStyle = '#ffffff';
+		            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+		            
+		            // 이미지를 A4 비율에 맞게 그리기
+		            ctx.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
+		            
+		            const link = document.createElement('a');
+		            link.download = `${filename}.png`;
+		            link.href = finalCanvas.toDataURL('image/png', 1.0);
+		            
+		            document.body.appendChild(link);
+		            link.click();
+		            document.body.removeChild(link);
+		            
+		            alert(`PNG가 ${filename}.png로 저장되었습니다! (A4 비율 ${A4_RATIO.toFixed(4)} 유지)`);
+		        }
 			} catch (error) {
 				console.error(`${format.toUpperCase()} 생성 오류:`, error);
 				alert(`${format.toUpperCase()} 생성 중 오류가 발생했습니다.`);
