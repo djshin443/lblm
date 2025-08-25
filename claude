@@ -1938,32 +1938,36 @@
 		            alert(`PDF가 ${filename}.pdf로 저장되었습니다! (A4 비율 유지)`);
 		        } else {
 		            // PNG 저장 - A4 비율 유지
-		            const finalCanvas = document.createElement('canvas');
-		            const ctx = finalCanvas.getContext('2d');
-		            
-		            const canvasWidth = Math.round(containerWidth * 3);
-		            const canvasHeight = Math.round(canvasWidth / A4_RATIO);
-		            
-		            finalCanvas.width = canvasWidth;
-		            finalCanvas.height = canvasHeight;
-		            
-		            // 흰 배경 설정
-		            ctx.fillStyle = '#ffffff';
-		            ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-		            
-		            // 이미지를 A4 비율에 맞게 그리기
-		            ctx.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
-		            
-		            const link = document.createElement('a');
-		            link.download = `${filename}.png`;
-		            link.href = finalCanvas.toDataURL('image/png', 1.0);
-		            
-		            document.body.appendChild(link);
-		            link.click();
-		            document.body.removeChild(link);
-		            
-		            alert(`PNG가 ${filename}.png로 저장되었습니다! (A4 비율 ${A4_RATIO.toFixed(4)} 유지)`);
-		        }
+				    const finalCanvas = document.createElement('canvas');
+				    const ctx = finalCanvas.getContext('2d');
+				    
+				    // A4 비율 정의 (210:297 = 1:1.414)
+				    const A4_RATIO = 297 / 210;
+				    const containerWidth = element.offsetWidth;
+				    
+				    const canvasWidth = Math.round(containerWidth * 3);
+				    const canvasHeight = Math.round(canvasWidth * A4_RATIO);
+				    
+				    finalCanvas.width = canvasWidth;
+				    finalCanvas.height = canvasHeight;
+				    
+				    // 흰 배경 설정
+				    ctx.fillStyle = '#ffffff';
+				    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+				    
+				    // 이미지를 A4 비율에 맞게 그리기
+				    ctx.drawImage(canvas, 0, 0, finalCanvas.width, finalCanvas.height);
+				    
+				    const link = document.createElement('a');
+				    link.download = `${filename}.png`;
+				    link.href = finalCanvas.toDataURL('image/png', 1.0);
+				    
+				    document.body.appendChild(link);
+				    link.click();
+				    document.body.removeChild(link);
+				    
+				    alert(`PNG가 ${filename}.png로 저장되었습니다! (A4 비율 ${A4_RATIO.toFixed(3)} 유지)`);
+				}
 			} catch (error) {
 				console.error(`${format.toUpperCase()} 생성 오류:`, error);
 				alert(`${format.toUpperCase()} 생성 중 오류가 발생했습니다.`);
